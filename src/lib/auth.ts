@@ -1,9 +1,7 @@
-import {
-  getIdentity,
-  requireIdentity,
-  type VerifiedIdentity,
-} from "../../cursor/identity";
+import { getIdentity, type VerifiedIdentity } from "../../cursor/identity";
 import { sql } from "./db";
+import { getProfile } from "./plans";
+import { readGuestId } from "./guest";
 
 export type Viewer = {
   sub: string;
@@ -11,29 +9,43 @@ export type Viewer = {
   name: string;
   simulated: boolean;
   kind: "person" | "key";
+  via: "cursor" | "guest";
 };
+
+export const noStore = { "cache-control": "private, no-store" } as const;
+
+export async function optionalViewer(request: Request): Promise<Viewer | null> {
+  const identity = await getIdentity(request);
+  if (identity.verified && identity.kind === "person") {
+    const viewer = toViewer(identity);
+    await ensureProfile(viewer);
+    return viewer;
+  }
+
+  const guestId = readGuestId(request);
+  if (!guestId) return null;
+  const profile = await getProfile(guestId);
+  if (!profile) return null;
+  return {
+    sub: profile.id,
+    email: profile.email || "",
+    name: profile.display_name || "Friend",
+    simulated: false,
+    kind: "person",
+    via: "guest",
+  };
+}
 
 export async function requireViewer(
   request: Request,
 ): Promise<Viewer | Response> {
-  const identity = await requireIdentity(request);
-  if (identity instanceof Response) return identity;
-  if (identity.kind === "key") {
+  const viewer = await optionalViewer(request);
+  if (!viewer) {
     return Response.json(
-      { error: "person_required" },
-      { status: 403, headers: { "cache-control": "private, no-store" } },
+      { error: "sign_in_required" },
+      { status: 401, headers: noStore },
     );
   }
-  const viewer = toViewer(identity);
-  await ensureProfile(viewer);
-  return viewer;
-}
-
-export async function optionalViewer(request: Request): Promise<Viewer | null> {
-  const identity = await getIdentity(request);
-  if (!identity.verified || identity.kind === "key") return null;
-  const viewer = toViewer(identity);
-  await ensureProfile(viewer);
   return viewer;
 }
 
@@ -44,6 +56,7 @@ function toViewer(identity: VerifiedIdentity): Viewer {
     name: identity.name || identity.email.split("@")[0] || "Friend",
     simulated: identity.simulated,
     kind: identity.kind,
+    via: "cursor",
   };
 }
 
@@ -60,5 +73,3 @@ async function ensureProfile(viewer: Viewer): Promise<void> {
     [viewer.sub, viewer.email, viewer.name],
   );
 }
-
-export const noStore = { "cache-control": "private, no-store" } as const;

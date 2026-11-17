@@ -23,6 +23,7 @@ export async function GET(request: Request) {
         name: viewer.name,
         email: viewer.email,
         simulated: viewer.simulated,
+        via: viewer.via,
         availability_hint: profile?.availability_hint ?? "",
         unread: unread[0]?.count ?? 0,
       },
