@@ -1,0 +1,50 @@
+:root {
+  --ink: #f3ebe1;
+  --soft: #e4d7c8;
+  --muted: #9aa79f;
+  --ember: #e08955;
+  --moss: #6db89a;
+  --display: 'Fraunces', 'Iowan Old Style', 'Palatino Linotype', serif;
+  --body: 'Outfit', 'Avenir Next', 'Segoe UI', sans-serif;
+
+  font-family: var(--body);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--ink);
+  background: #0d1412;
+  line-height: 1.45;
+  font-weight: 420;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--ember) 70%, white);
+  outline-offset: 2px;
+}
