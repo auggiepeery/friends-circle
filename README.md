@@ -1,14 +1,12 @@
-# Bottenheimer — Friends log
+# Fun Peepers (friends-circle)
 
-A single-user personal web app for tracking what your friends are up to.
+Multi-user friends planning app: create hangouts, RSVP, poll times/places, chat on a plan, share links, weekend view, friend invites, light expense split, and outdoor weather.
 
-## Features
+## Stack
 
-- Add, edit, and remove friends (name, optional note, emoji, color)
-- Log activities (what, optional place/time label, timestamp)
-- Home feed of recent activity across friends
-- Friend detail with activity history
-- Persisted in `localStorage`, with sample data on first open and a Reset option
+- Next.js App Router + TypeScript + CSS Modules
+- Postgres via `DATABASE_URL` (PGlite locally when unset)
+- Cursor apps identity for signed-in viewers (simulated locally)
 
 ## Develop
 
@@ -17,15 +15,8 @@ npm install
 npm run dev
 ```
 
-Open [http://127.0.0.1:5173](http://127.0.0.1:5173).
+Open http://127.0.0.1:3000
 
-## Build
+## Brand
 
-```bash
-npm run build
-npm run preview
-```
-
-## Stack
-
-Vite + React + TypeScript. No backend; data stays in the browser.
+**Fun Peepers** — deep teal night atmosphere, Syne + Manrope, lagoon/lamp accents.

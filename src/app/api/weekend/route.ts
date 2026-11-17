@@ -1,0 +1,11 @@
+import { noStore, requireViewer } from "@/lib/auth";
+import { listWeekendForUser } from "@/lib/plans";
+
+export const dynamic = "force-dynamic";
+
+export async function GET(request: Request) {
+  const viewer = await requireViewer(request);
+  if (viewer instanceof Response) return viewer;
+  const plans = await listWeekendForUser(viewer.sub);
+  return Response.json({ plans }, { headers: noStore });
+}
