@@ -3,15 +3,38 @@ import { FRIEND_COLORS, SAMPLE_EMOJIS } from './seed'
 import {
   addActivity,
   addFriend,
+  addRoutine,
+  formatRecurrence,
   loadData,
+  nextOccurrenceLabel,
   relativeTime,
   removeActivity,
   removeFriend,
+  removeRoutine,
   resetToSample,
   updateFriend,
+  updateRoutine,
 } from './storage'
-import type { Activity, AppData, Friend, View } from './types'
+import type {
+  Activity,
+  AppData,
+  Friend,
+  Recurrence,
+  Routine,
+  View,
+  Weekday,
+} from './types'
 import './App.css'
+
+const WEEKDAY_OPTIONS: { value: Weekday; label: string }[] = [
+  { value: 0, label: 'Sun' },
+  { value: 1, label: 'Mon' },
+  { value: 2, label: 'Tue' },
+  { value: 3, label: 'Wed' },
+  { value: 4, label: 'Thu' },
+  { value: 5, label: 'Fri' },
+  { value: 6, label: 'Sat' },
+]
 
 function friendById(data: AppData, id: string) {
   return data.friends.find((f) => f.id === id)
@@ -38,6 +61,11 @@ function App() {
     return feed.filter((a) => a.friendId === view.friendId)
   }, [feed, view])
 
+  const friendRoutines = useMemo(() => {
+    if (view.kind !== 'friend') return []
+    return data.routines.filter((r) => r.friendId === view.friendId)
+  }, [data.routines, view])
+
   function handleReset() {
     if (
       !confirm(
@@ -49,6 +77,11 @@ function App() {
     setData(resetToSample())
     setView({ kind: 'home' })
   }
+
+  const sheetOpen =
+    view.kind === 'edit-friend' ||
+    view.kind === 'log-activity' ||
+    view.kind === 'edit-routine'
 
   return (
     <div className="app">
@@ -97,6 +130,10 @@ function App() {
             onOpenFriend={(id) => setView({ kind: 'friend', friendId: id })}
             onLog={() => setView({ kind: 'log-activity' })}
             onAddFriend={() => setView({ kind: 'edit-friend' })}
+            onAddRoutine={() => setView({ kind: 'edit-routine' })}
+            onEditRoutine={(routineId) =>
+              setView({ kind: 'edit-routine', routineId })
+            }
           />
         )}
 
@@ -104,6 +141,7 @@ function App() {
           <FriendDetail
             friend={selectedFriend}
             activities={friendActivities}
+            routines={friendRoutines}
             onBack={() => setView({ kind: 'home' })}
             onEdit={() =>
               setView({ kind: 'edit-friend', friendId: selectedFriend.id })
@@ -111,6 +149,17 @@ function App() {
             onLog={() =>
               setView({ kind: 'log-activity', friendId: selectedFriend.id })
             }
+            onAddRoutine={() =>
+              setView({ kind: 'edit-routine', friendId: selectedFriend.id })
+            }
+            onEditRoutine={(routineId) =>
+              setView({
+                kind: 'edit-routine',
+                friendId: selectedFriend.id,
+                routineId,
+              })
+            }
+            onRemoveRoutine={(id) => setData(removeRoutine(data, id))}
             onRemove={() => {
               if (!confirm(`Remove ${selectedFriend.name} and their activities?`))
                 return
@@ -121,7 +170,7 @@ function App() {
           />
         )}
 
-        {(view.kind === 'edit-friend' || view.kind === 'log-activity') && (
+        {sheetOpen && (
           <div className="sheet-backdrop" role="presentation">
             <div
               className="sheet"
@@ -176,6 +225,35 @@ function App() {
                   }}
                 />
               )}
+
+              {view.kind === 'edit-routine' && (
+                <RoutineForm
+                  friends={data.friends}
+                  routine={
+                    view.routineId
+                      ? data.routines.find((r) => r.id === view.routineId)
+                      : undefined
+                  }
+                  presetFriendId={view.friendId}
+                  onCancel={() =>
+                    setView(
+                      view.friendId
+                        ? { kind: 'friend', friendId: view.friendId }
+                        : { kind: 'home' },
+                    )
+                  }
+                  onSave={(input) => {
+                    if (view.routineId) {
+                      const next = updateRoutine(data, view.routineId, input)
+                      setData(next)
+                    } else {
+                      const next = addRoutine(data, input)
+                      setData(next)
+                    }
+                    setView({ kind: 'friend', friendId: input.friendId })
+                  }}
+                />
+              )}
             </div>
           </div>
         )}
@@ -190,12 +268,16 @@ function HomeView({
   onOpenFriend,
   onLog,
   onAddFriend,
+  onAddRoutine,
+  onEditRoutine,
 }: {
   data: AppData
   feed: Activity[]
   onOpenFriend: (id: string) => void
   onLog: () => void
   onAddFriend: () => void
+  onAddRoutine: () => void
+  onEditRoutine: (routineId: string) => void
 }) {
   const latest = feed[0]
   const latestFriend = latest ? friendById(data, latest.friendId) : undefined
@@ -227,6 +309,9 @@ function HomeView({
         <div className="hero-ctas">
           <button type="button" className="primary-btn" onClick={onLog}>
             Log activity
+          </button>
+          <button type="button" className="ghost-btn" onClick={onAddRoutine}>
+            Repeating
           </button>
           <button type="button" className="ghost-btn" onClick={onAddFriend}>
             New friend
@@ -260,6 +345,51 @@ function HomeView({
         </div>
       </section>
 
+      <section className="feed-section" aria-label="Repeating">
+        <div className="section-head">
+          <h2>Repeating</h2>
+          <span>{data.routines.length}</span>
+        </div>
+        <ul className="routine-list">
+          {data.routines.map((routine) => {
+            const friend = friendById(data, routine.friendId)
+            if (!friend) return null
+            return (
+              <li key={routine.id}>
+                <button
+                  type="button"
+                  className="routine-row"
+                  onClick={() => onEditRoutine(routine.id)}
+                  style={{ '--friend': friend.color } as CSSProperties}
+                >
+                  <span className="routine-mark" aria-hidden="true">
+                    ↻
+                  </span>
+                  <span className="routine-body">
+                    <span className="timeline-who">{friend.name}</span>
+                    <span className="timeline-what">{routine.what}</span>
+                    <span className="timeline-meta">
+                      {[
+                        formatRecurrence(routine),
+                        routine.place,
+                        `Next: ${nextOccurrenceLabel(routine)}`,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            )
+          })}
+          {data.routines.length === 0 && (
+            <li className="empty-inline">
+              No repeating events yet — add tennis class, run club, and so on.
+            </li>
+          )}
+        </ul>
+      </section>
+
       <section className="feed-section" aria-label="Recent activity">
         <div className="section-head">
           <h2>Recent</h2>
@@ -282,13 +412,14 @@ function HomeView({
                   style={{ '--friend': friend.color } as CSSProperties}
                 >
                   <span className="timeline-mark" aria-hidden="true">
-                    {friend.emoji || '·'}
+                    {activity.routineId ? '↻' : friend.emoji || '·'}
                   </span>
                   <span className="timeline-body">
                     <span className="timeline-who">{friend.name}</span>
                     <span className="timeline-what">{activity.what}</span>
                     <span className="timeline-meta">
                       {[
+                        activity.routineId ? 'Repeating' : null,
                         activity.place,
                         activity.whenLabel,
                         relativeTime(activity.timestamp),
@@ -313,17 +444,25 @@ function HomeView({
 function FriendDetail({
   friend,
   activities,
+  routines,
   onBack,
   onEdit,
   onLog,
+  onAddRoutine,
+  onEditRoutine,
+  onRemoveRoutine,
   onRemove,
   onRemoveActivity,
 }: {
   friend: Friend
   activities: Activity[]
+  routines: Routine[]
   onBack: () => void
   onEdit: () => void
   onLog: () => void
+  onAddRoutine: () => void
+  onEditRoutine: (id: string) => void
+  onRemoveRoutine: (id: string) => void
   onRemove: () => void
   onRemoveActivity: (id: string) => void
 }) {
@@ -350,6 +489,9 @@ function FriendDetail({
         <button type="button" className="primary-btn" onClick={onLog}>
           Log activity
         </button>
+        <button type="button" className="ghost-btn" onClick={onAddRoutine}>
+          Repeating
+        </button>
         <button type="button" className="ghost-btn" onClick={onEdit}>
           Edit
         </button>
@@ -357,6 +499,53 @@ function FriendDetail({
           Remove
         </button>
       </div>
+
+      <section className="feed-section">
+        <div className="section-head">
+          <h2>Repeating</h2>
+          <span>{routines.length}</span>
+        </div>
+        <ul className="routine-list">
+          {routines.map((routine) => (
+            <li key={routine.id}>
+              <div className="routine-row static">
+                <span className="routine-mark" aria-hidden="true">
+                  ↻
+                </span>
+                <button
+                  type="button"
+                  className="routine-body as-button"
+                  onClick={() => onEditRoutine(routine.id)}
+                >
+                  <span className="timeline-what">{routine.what}</span>
+                  <span className="timeline-meta">
+                    {[
+                      formatRecurrence(routine),
+                      routine.place,
+                      `Next: ${nextOccurrenceLabel(routine)}`,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label="Delete repeating event"
+                  onClick={() => onRemoveRoutine(routine.id)}
+                >
+                  ×
+                </button>
+              </div>
+            </li>
+          ))}
+          {routines.length === 0 && (
+            <li className="empty-inline">
+              No repeating events for {friend.name}.
+            </li>
+          )}
+        </ul>
+      </section>
 
       <section className="feed-section">
         <div className="section-head">
@@ -372,12 +561,13 @@ function FriendDetail({
             >
               <div className="timeline-row static">
                 <span className="timeline-mark" aria-hidden="true">
-                  ·
+                  {activity.routineId ? '↻' : '·'}
                 </span>
                 <span className="timeline-body">
                   <span className="timeline-what">{activity.what}</span>
                   <span className="timeline-meta">
                     {[
+                      activity.routineId ? 'Repeating' : null,
                       activity.place,
                       activity.whenLabel,
                       relativeTime(activity.timestamp),
@@ -616,6 +806,186 @@ function ActivityForm({
         </button>
         <button type="submit" className="primary-btn">
           Log it
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function RoutineForm({
+  friends,
+  routine,
+  presetFriendId,
+  onCancel,
+  onSave,
+}: {
+  friends: Friend[]
+  routine?: Routine
+  presetFriendId?: string
+  onCancel: () => void
+  onSave: (input: {
+    friendId: string
+    what: string
+    place?: string
+    whenLabel?: string
+    recurrence: Recurrence
+    weekdays?: Weekday[]
+    time?: string
+  }) => void
+}) {
+  const [friendId, setFriendId] = useState(
+    routine?.friendId || presetFriendId || friends[0]?.id || '',
+  )
+  const [what, setWhat] = useState(routine?.what ?? '')
+  const [place, setPlace] = useState(routine?.place ?? '')
+  const [whenLabel, setWhenLabel] = useState(routine?.whenLabel ?? '')
+  const [recurrence, setRecurrence] = useState<Recurrence>(
+    routine?.recurrence ?? 'weekly',
+  )
+  const [weekdays, setWeekdays] = useState<Weekday[]>(
+    routine?.weekdays ?? [2],
+  )
+  const [time, setTime] = useState(routine?.time ?? '18:00')
+
+  function toggleDay(day: Weekday) {
+    setWeekdays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort(),
+    )
+  }
+
+  function submit(e: FormEvent) {
+    e.preventDefault()
+    if (!friendId || !what.trim()) return
+    if (recurrence === 'weekly' && weekdays.length === 0) return
+    onSave({
+      friendId,
+      what,
+      place,
+      whenLabel,
+      recurrence,
+      weekdays: recurrence === 'weekly' ? weekdays : undefined,
+      time: time || undefined,
+    })
+  }
+
+  if (friends.length === 0) {
+    return (
+      <div className="form">
+        <h2 id="sheet-title">Repeating event</h2>
+        <p className="empty-inline">Add a friend first, then set a repeating event.</p>
+        <div className="form-actions">
+          <button type="button" className="ghost-btn" onClick={onCancel}>
+            Close
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <form className="form" onSubmit={submit}>
+      <h2 id="sheet-title">
+        {routine ? 'Edit repeating' : 'Repeating event'}
+      </h2>
+      <label>
+        Friend
+        <select
+          value={friendId}
+          onChange={(e) => setFriendId(e.target.value)}
+          required
+        >
+          {friends.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.emoji ? `${f.emoji} ` : ''}
+              {f.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        What repeats?
+        <input
+          value={what}
+          onChange={(e) => setWhat(e.target.value)}
+          placeholder="Tennis class, yoga, choir…"
+          required
+          autoFocus
+        />
+      </label>
+      <label>
+        Place <span className="optional">optional</span>
+        <input
+          value={place}
+          onChange={(e) => setPlace(e.target.value)}
+          placeholder="Where?"
+        />
+      </label>
+      <label>
+        Time label <span className="optional">optional</span>
+        <input
+          value={whenLabel}
+          onChange={(e) => setWhenLabel(e.target.value)}
+          placeholder="after work, mornings…"
+        />
+      </label>
+      <fieldset>
+        <legend>Repeats</legend>
+        <div className="segmented">
+          <button
+            type="button"
+            className={`segment ${recurrence === 'weekly' ? 'selected' : ''}`}
+            onClick={() => setRecurrence('weekly')}
+          >
+            Weekly
+          </button>
+          <button
+            type="button"
+            className={`segment ${recurrence === 'daily' ? 'selected' : ''}`}
+            onClick={() => setRecurrence('daily')}
+          >
+            Daily
+          </button>
+        </div>
+      </fieldset>
+      {recurrence === 'weekly' && (
+        <fieldset>
+          <legend>Days</legend>
+          <div className="weekday-row">
+            {WEEKDAY_OPTIONS.map((day) => (
+              <button
+                key={day.value}
+                type="button"
+                className={`weekday-pick ${weekdays.includes(day.value) ? 'selected' : ''}`}
+                onClick={() => toggleDay(day.value)}
+                aria-pressed={weekdays.includes(day.value)}
+              >
+                {day.label}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+      )}
+      <label>
+        Time of day <span className="optional">optional</span>
+        <input
+          type="time"
+          value={time}
+          onChange={(e) => setTime(e.target.value)}
+        />
+      </label>
+      <p className="form-hint">
+        Matching days from the last few weeks show up in Recent automatically.
+      </p>
+      <div className="form-actions">
+        <button type="button" className="ghost-btn" onClick={onCancel}>
+          Cancel
+        </button>
+        <button
+          type="submit"
+          className="primary-btn"
+          disabled={recurrence === 'weekly' && weekdays.length === 0}
+        >
+          {routine ? 'Save' : 'Add'}
         </button>
       </div>
     </form>
