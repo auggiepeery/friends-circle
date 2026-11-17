@@ -84,6 +84,65 @@
   padding: 1.25rem 1.25rem 4.5rem;
 }
 
+.gate {
+  width: min(1080px, 100%);
+  margin: 1.5rem auto 0;
+  padding: 0 1.25rem;
+}
+
+.gateForm {
+  display: grid;
+  gap: 0.85rem;
+  max-width: 28rem;
+  padding: 1.25rem 0 0.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.gateForm strong {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+}
+
+.gateForm p {
+  margin-top: 0.35rem;
+  color: var(--mist-dim);
+  line-height: 1.45;
+  font-size: 0.95rem;
+}
+
+.gateInput {
+  padding: 0.75rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.gateBtn {
+  justify-self: start;
+  padding: 0.7rem 1.1rem;
+  border-radius: 999px;
+  background: var(--lagoon);
+  color: #04201f;
+  font-weight: 650;
+}
+
+.signOutRow {
+  width: min(1080px, 100%);
+  margin: 0 auto;
+  padding: 0 1.25rem 5rem;
+}
+
+.signOut {
+  color: var(--mist-dim);
+  font-size: 0.85rem;
+  text-decoration: underline;
+}
+
+.loading {
+  color: var(--mist-dim);
+}
+
 .mobile {
   display: none;
 }
