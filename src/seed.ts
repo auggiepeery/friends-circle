@@ -127,5 +127,29 @@ export function createSeedData(): AppData {
     },
   ]
 
-  return { version: 1, friends, activities }
+  const routines = [
+    {
+      id: 'r-maya-tennis',
+      friendId: 'f-maya',
+      what: 'Tennis class',
+      place: 'Golden Gate Park courts',
+      whenLabel: 'after work',
+      recurrence: 'weekly' as const,
+      weekdays: [2, 4] as (2 | 4)[],
+      time: '18:30',
+      createdAt: hoursAgo(720),
+    },
+    {
+      id: 'r-sam-run',
+      friendId: 'f-sam',
+      what: 'Morning run club',
+      place: 'Panhandle',
+      recurrence: 'weekly' as const,
+      weekdays: [1, 3, 5] as (1 | 3 | 5)[],
+      time: '07:00',
+      createdAt: hoursAgo(480),
+    },
+  ]
+
+  return { version: 1, friends, activities, routines }
 }

@@ -6,8 +6,9 @@ A single-user personal web app for tracking what your friends are up to.
 
 - Add, edit, and remove friends (name, optional note, emoji, color)
 - Log activities (what, optional place/time label, timestamp)
+- Repeating events (daily or weekly, e.g. tennis class) that auto-appear in Recent
 - Home feed of recent activity across friends
-- Friend detail with activity history
+- Friend detail with activity history and routines
 - Persisted in `localStorage`, with sample data on first open and a Reset option
 
 ## Develop
