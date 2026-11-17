@@ -36,16 +36,11 @@ export async function inviteFriend(
   fromId: string,
   emailOrName: string,
 ): Promise<{ ok: true; friendship: Friendship } | { ok: false; error: string }> {
-  const q = emailOrName.trim().toLowerCase();
+  const q = emailOrName.trim().toLowerCase().slice(0, 160);
   if (!q) return { ok: false, error: "Enter an email or name" };
 
-  let targets = await sql<Profile>(
-    `select * from profiles
-     where lower(email) = $1 or lower(display_name) = $1
-     limit 5`,
-    [q],
-  );
-  if (targets.length === 0) {
+  let friend = await findProfileForInvite(q);
+  if (!friend) {
     // Create a placeholder invitee profile keyed by email so invites work before they sign in.
     if (!q.includes("@")) {
       return { ok: false, error: "No matching friend yet — try their email" };
@@ -55,14 +50,14 @@ export async function inviteFriend(
       `insert into profiles (id, email, display_name)
        values ($1, $2, $3)
        on conflict (id) do nothing`,
-      [placeholderId, q, q.split("@")[0]],
+      [placeholderId, q, q.split("@")[0].slice(0, 80)],
     );
-    targets = await sql<Profile>(`select * from profiles where id = $1`, [
-      placeholderId,
-    ]);
+    friend = await findProfileForInvite(q);
   }
 
-  const friend = targets[0];
+  if (!friend) {
+    return { ok: false, error: "Couldn’t find that friend" };
+  }
   if (friend.id === fromId) {
     return { ok: false, error: "That’s you" };
   }
@@ -99,7 +94,7 @@ export async function inviteFriend(
     friendship: {
       ...rows[0],
       display_name: friend.display_name,
-      email: friend.email,
+      // Do not echo matched profile emails back — invitees are confirmed server-side only.
       availability_hint: friend.availability_hint,
     },
   };
@@ -142,18 +137,26 @@ export async function setAvailability(
   ]);
 }
 
-export async function searchPeople(
-  userId: string,
-  q: string,
-): Promise<Profile[]> {
-  const query = q.trim().toLowerCase();
-  if (!query) return [];
-  return sql(
-    `select * from profiles
-     where id <> $1
-       and (lower(email) like $2 or lower(display_name) like $2)
-     order by display_name asc
-     limit 12`,
-    [userId, `%${query}%`],
+/** Exact email invite lookup only — never substring search, never returned to clients. */
+export async function findProfileForInvite(
+  emailOrName: string,
+): Promise<Profile | null> {
+  const q = emailOrName.trim().toLowerCase().slice(0, 160);
+  if (!q) return null;
+  if (q.includes("@")) {
+    const rows = await sql<Profile>(
+      `select id, email, display_name, availability_hint from profiles
+       where lower(email) = $1
+       limit 1`,
+      [q],
+    );
+    return rows[0] ?? null;
+  }
+  const rows = await sql<Profile>(
+    `select id, email, display_name, availability_hint from profiles
+     where lower(display_name) = $1
+     limit 1`,
+    [q],
   );
+  return rows[0] ?? null;
 }

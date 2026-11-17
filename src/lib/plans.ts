@@ -10,11 +10,16 @@ import type {
   Rsvp,
 } from "./types";
 
-export async function listUpcomingForUser(userId: string): Promise<
-  (Plan & { my_rsvp: string | null; going_count: number })[]
-> {
+type PlanListRow = Omit<Plan, "share_token"> & {
+  my_rsvp: string | null;
+  going_count: number;
+};
+
+export async function listUpcomingForUser(userId: string): Promise<PlanListRow[]> {
   return sql(
-    `select p.*,
+    `select p.id, p.creator_id, p.title, p.description, p.place,
+       p.starts_at, p.ends_at, p.template, p.outdoor, p.lat, p.lon,
+       p.reminder_at, p.recurring_rule, p.status, p.created_at, p.updated_at,
        (select r.response from plan_rsvps r where r.plan_id = p.id and r.user_id = $1) as my_rsvp,
        (select count(*)::int from plan_rsvps r where r.plan_id = p.id and r.response = 'going') as going_count
      from plans p
@@ -36,9 +41,7 @@ export async function listUpcomingForUser(userId: string): Promise<
   );
 }
 
-export async function listWeekendForUser(userId: string): Promise<
-  (Plan & { my_rsvp: string | null; going_count: number })[]
-> {
+export async function listWeekendForUser(userId: string): Promise<PlanListRow[]> {
   const now = new Date();
   const day = now.getDay(); // 0 Sun .. 6 Sat
   const toFri = (5 - day + 7) % 7;
@@ -48,7 +51,9 @@ export async function listWeekendForUser(userId: string): Promise<
   const end = new Date(start);
   end.setDate(end.getDate() + 3);
   return sql(
-    `select p.*,
+    `select p.id, p.creator_id, p.title, p.description, p.place,
+       p.starts_at, p.ends_at, p.template, p.outdoor, p.lat, p.lon,
+       p.reminder_at, p.recurring_rule, p.status, p.created_at, p.updated_at,
        (select r.response from plan_rsvps r where r.plan_id = p.id and r.user_id = $1) as my_rsvp,
        (select count(*)::int from plan_rsvps r where r.plan_id = p.id and r.response = 'going') as going_count
      from plans p
@@ -66,7 +71,8 @@ export async function listWeekendForUser(userId: string): Promise<
                or (f.friend_id = $1 and f.user_id = p.creator_id))
          )
        )
-     order by p.starts_at asc`,
+     order by p.starts_at asc
+     limit 40`,
     [userId, start.toISOString(), end.toISOString()],
   );
 }
@@ -211,7 +217,8 @@ export async function listComments(planId: string): Promise<Comment[]> {
      from plan_comments c
      join profiles p on p.id = c.user_id
      where c.plan_id = $1
-     order by c.created_at asc`,
+     order by c.created_at asc
+     limit 200`,
     [planId],
   );
 }
@@ -226,7 +233,7 @@ export async function addComment(
     `insert into plan_comments (id, plan_id, user_id, body)
      values ($1,$2,$3,$4)
      returning *`,
-    [commentId, planId, userId, body.trim()],
+    [commentId, planId, userId, body.trim().slice(0, 2000)],
   );
   return rows[0];
 }
@@ -266,13 +273,16 @@ export async function createPoll(input: {
   options: string[];
 }): Promise<Poll> {
   const pollId = id("poll");
+  const question = input.question.trim().slice(0, 200);
+  const kind = input.kind === "place" ? "place" : "time";
   await sql(
     `insert into plan_polls (id, plan_id, kind, question) values ($1,$2,$3,$4)`,
-    [pollId, input.planId, input.kind, input.question.trim()],
+    [pollId, input.planId, kind, question],
   );
   const options: PollOption[] = [];
-  for (let i = 0; i < input.options.length; i++) {
-    const label = input.options[i].trim();
+  const capped = input.options.slice(0, 8);
+  for (let i = 0; i < capped.length; i++) {
+    const label = capped[i].trim().slice(0, 80);
     if (!label) continue;
     const optionId = id("opt");
     await sql(
@@ -291,8 +301,8 @@ export async function createPoll(input: {
   return {
     id: pollId,
     plan_id: input.planId,
-    kind: input.kind,
-    question: input.question.trim(),
+    kind,
+    question,
     options,
   };
 }
@@ -300,12 +310,15 @@ export async function createPoll(input: {
 export async function votePoll(
   optionId: string,
   userId: string,
-): Promise<void> {
+  planId: string,
+): Promise<boolean> {
   const option = await sql<{ poll_id: string }>(
-    `select poll_id from poll_options where id = $1`,
-    [optionId],
+    `select o.poll_id from poll_options o
+     join plan_polls p on p.id = o.poll_id
+     where o.id = $1 and p.plan_id = $2`,
+    [optionId, planId],
   );
-  if (!option[0]) return;
+  if (!option[0]) return false;
   const siblingIds = await sql<{ id: string }>(
     `select id from poll_options where poll_id = $1`,
     [option[0].poll_id],
@@ -321,6 +334,7 @@ export async function votePoll(
      on conflict do nothing`,
     [optionId, userId],
   );
+  return true;
 }
 
 export async function listExpenses(planId: string): Promise<Expense[]> {
@@ -349,17 +363,18 @@ export async function addExpense(input: {
       expenseId,
       input.planId,
       input.payerId,
-      input.description.trim(),
-      Math.max(0, Math.round(input.amountCents)),
+      input.description.trim().slice(0, 200),
+      Math.min(10_000_000, Math.max(0, Math.round(input.amountCents))),
     ],
   );
   return rows[0];
 }
 
 export async function getProfile(userId: string): Promise<Profile | null> {
-  const rows = await sql<Profile>(`select * from profiles where id = $1`, [
-    userId,
-  ]);
+  const rows = await sql<Profile>(
+    `select id, email, display_name, availability_hint from profiles where id = $1`,
+    [userId],
+  );
   return rows[0] ?? null;
 }
 

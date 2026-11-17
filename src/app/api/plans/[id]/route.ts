@@ -1,4 +1,14 @@
+import { canAccessPlan, planForViewer } from "@/lib/access";
 import { noStore, requireViewer } from "@/lib/auth";
+import {
+  MAX_PLACE,
+  MAX_POLL_OPTIONS,
+  MAX_POLL_OPTION,
+  MAX_TEXT,
+  MAX_TITLE,
+  clip,
+  readJsonBounded,
+} from "@/lib/http";
 import {
   addComment,
   addExpense,
@@ -18,14 +28,37 @@ export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-export async function GET(request: Request, ctx: Ctx) {
+async function loadAuthorizedPlan(request: Request, id: string) {
   const viewer = await requireViewer(request);
-  if (viewer instanceof Response) return viewer;
-  const { id } = await ctx.params;
+  if (viewer instanceof Response) return { error: viewer as Response };
   const plan = await getPlan(id);
   if (!plan) {
-    return Response.json({ error: "not_found" }, { status: 404, headers: noStore });
+    return {
+      error: Response.json(
+        { error: "not_found" },
+        { status: 404, headers: noStore },
+      ),
+    };
   }
+  if (!(await canAccessPlan(plan, viewer.sub))) {
+    return {
+      error: Response.json(
+        { error: "forbidden" },
+        { status: 403, headers: noStore },
+      ),
+    };
+  }
+  return { viewer, plan };
+}
+
+export async function GET(request: Request, ctx: Ctx) {
+  const { id } = await ctx.params;
+  const auth = await loadAuthorizedPlan(request, id);
+  if ("error" in auth && auth.error) return auth.error;
+  const { viewer, plan } = auth as {
+    viewer: { sub: string; name: string };
+    plan: NonNullable<Awaited<ReturnType<typeof getPlan>>>;
+  };
   const [rsvps, comments, polls, expenses] = await Promise.all([
     listRsvps(id),
     listComments(id),
@@ -33,28 +66,34 @@ export async function GET(request: Request, ctx: Ctx) {
     listExpenses(id),
   ]);
   return Response.json(
-    { plan, rsvps, comments, polls, expenses },
+    {
+      plan: planForViewer(plan, viewer.sub),
+      rsvps,
+      comments,
+      polls,
+      expenses,
+    },
     { headers: noStore },
   );
 }
 
 export async function PATCH(request: Request, ctx: Ctx) {
-  const viewer = await requireViewer(request);
-  if (viewer instanceof Response) return viewer;
   const { id } = await ctx.params;
-  const plan = await getPlan(id);
-  if (!plan) {
-    return Response.json({ error: "not_found" }, { status: 404, headers: noStore });
-  }
+  const auth = await loadAuthorizedPlan(request, id);
+  if ("error" in auth && auth.error) return auth.error;
+  const { viewer, plan } = auth as {
+    viewer: { sub: string; name: string };
+    plan: NonNullable<Awaited<ReturnType<typeof getPlan>>>;
+  };
   if (plan.creator_id !== viewer.sub) {
     return Response.json({ error: "forbidden" }, { status: 403, headers: noStore });
   }
-  const body = (await request.json()) as Record<string, unknown>;
+  const body = await readJsonBounded<Record<string, unknown>>(request);
+  if (body instanceof Response) return body;
   const updated = await updatePlan(id, {
-    title: typeof body.title === "string" ? body.title : undefined,
-    description:
-      typeof body.description === "string" ? body.description : undefined,
-    place: typeof body.place === "string" ? body.place : undefined,
+    title: clip(body.title, MAX_TITLE) || undefined,
+    description: clip(body.description, MAX_TEXT) || undefined,
+    place: clip(body.place, MAX_PLACE) || undefined,
     startsAt:
       body.startsAt === null || typeof body.startsAt === "string"
         ? (body.startsAt as string | null)
@@ -69,21 +108,26 @@ export async function PATCH(request: Request, ctx: Ctx) {
         ? (body.reminderAt as string | null)
         : undefined,
     recurringRule:
-      typeof body.recurringRule === "string" ? body.recurringRule : undefined,
-    status: typeof body.status === "string" ? body.status : undefined,
+      typeof body.recurringRule === "string"
+        ? clip(body.recurringRule, 32)
+        : undefined,
+    status: typeof body.status === "string" ? clip(body.status, 32) : undefined,
   });
-  return Response.json({ plan: updated }, { headers: noStore });
+  return Response.json(
+    { plan: updated ? planForViewer(updated, viewer.sub) : null },
+    { headers: noStore },
+  );
 }
 
 export async function POST(request: Request, ctx: Ctx) {
-  const viewer = await requireViewer(request);
-  if (viewer instanceof Response) return viewer;
   const { id } = await ctx.params;
-  const plan = await getPlan(id);
-  if (!plan) {
-    return Response.json({ error: "not_found" }, { status: 404, headers: noStore });
-  }
-  const body = (await request.json()) as {
+  const auth = await loadAuthorizedPlan(request, id);
+  if ("error" in auth && auth.error) return auth.error;
+  const { viewer, plan } = auth as {
+    viewer: { sub: string; name: string };
+    plan: NonNullable<Awaited<ReturnType<typeof getPlan>>>;
+  };
+  const body = await readJsonBounded<{
     action?: string;
     response?: string;
     body?: string;
@@ -93,11 +137,12 @@ export async function POST(request: Request, ctx: Ctx) {
     optionId?: string;
     description?: string;
     amountCents?: number;
-  };
+  }>(request);
+  if (body instanceof Response) return body;
 
   switch (body.action) {
     case "rsvp": {
-      const response = body.response || "going";
+      const response = clip(body.response, 16) || "going";
       if (!["going", "maybe", "no"].includes(response)) {
         return Response.json(
           { error: "bad_response" },
@@ -120,7 +165,7 @@ export async function POST(request: Request, ctx: Ctx) {
       );
     }
     case "comment": {
-      const text = (body.body || "").trim();
+      const text = clip(body.body, MAX_TEXT);
       if (!text) {
         return Response.json(
           { error: "empty" },
@@ -146,22 +191,41 @@ export async function POST(request: Request, ctx: Ctx) {
           { status: 403, headers: noStore },
         );
       }
+      const options = Array.isArray(body.options)
+        ? body.options
+            .slice(0, MAX_POLL_OPTIONS)
+            .map((o) => clip(o, MAX_POLL_OPTION))
+            .filter(Boolean)
+        : [];
+      if (options.length < 2) {
+        return Response.json(
+          { error: "need_options" },
+          { status: 400, headers: noStore },
+        );
+      }
       const poll = await createPoll({
         planId: id,
-        kind: body.kind || "time",
-        question: body.question || "When works?",
-        options: body.options || [],
+        kind: clip(body.kind, 16) || "time",
+        question: clip(body.question, 200) || "When works?",
+        options,
       });
       return Response.json({ poll }, { status: 201, headers: noStore });
     }
     case "vote": {
-      if (!body.optionId) {
+      const optionId = clip(body.optionId, 80);
+      if (!optionId) {
         return Response.json(
           { error: "option_required" },
           { status: 400, headers: noStore },
         );
       }
-      await votePoll(body.optionId, viewer.sub);
+      const ok = await votePoll(optionId, viewer.sub, id);
+      if (!ok) {
+        return Response.json(
+          { error: "not_found" },
+          { status: 404, headers: noStore },
+        );
+      }
       return Response.json(
         { polls: await listPolls(id, viewer.sub) },
         { headers: noStore },
@@ -171,7 +235,7 @@ export async function POST(request: Request, ctx: Ctx) {
       const expense = await addExpense({
         planId: id,
         payerId: viewer.sub,
-        description: body.description || "Expense",
+        description: clip(body.description, 200) || "Expense",
         amountCents: Number(body.amountCents) || 0,
       });
       return Response.json({ expense }, { status: 201, headers: noStore });

@@ -14,7 +14,7 @@ type Detail = {
     starts_at: string | null;
     reminder_at: string | null;
     outdoor: boolean;
-    share_token: string;
+    share_token?: string;
     recurring_rule: string;
     creator_id: string;
     lat: number | null;
@@ -157,7 +157,7 @@ export default function PlanDetailPage() {
   }
 
   function copyShare() {
-    if (!data) return;
+    if (!data?.plan.share_token) return;
     const url = `${window.location.origin}/share/${data.plan.share_token}`;
     void navigator.clipboard.writeText(url);
     setCopied(true);
@@ -190,9 +190,11 @@ export default function PlanDetailPage() {
           ) : null}
         </div>
         <div className={ui.ctaRow} style={{ marginTop: "1.25rem" }}>
-          <button type="button" className={`${ui.btn} ${ui.btnLamp}`} onClick={copyShare}>
-            {copied ? "Link copied" : "Copy share link"}
-          </button>
+          {data.plan.share_token ? (
+            <button type="button" className={`${ui.btn} ${ui.btnLamp}`} onClick={copyShare}>
+              {copied ? "Link copied" : "Copy share link"}
+            </button>
+          ) : null}
           <button
             type="button"
             className={`${ui.btn} ${ui.btnGhost}`}

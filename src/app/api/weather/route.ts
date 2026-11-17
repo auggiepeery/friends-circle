@@ -1,22 +1,39 @@
-import { noStore } from "@/lib/auth";
+import { noStore, requireViewer } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 /** Open-Meteo forecast — no API key. Falls back to a labeled sample. */
 export async function GET(request: Request) {
+  const viewer = await requireViewer(request);
+  if (viewer instanceof Response) return viewer;
+
   const url = new URL(request.url);
-  const lat = Number(url.searchParams.get("lat") || "40.76");
-  const lon = Number(url.searchParams.get("lon") || "-111.89");
-  const day = url.searchParams.get("day"); // YYYY-MM-DD optional
+  const latRaw = Number(url.searchParams.get("lat") || "40.76");
+  const lonRaw = Number(url.searchParams.get("lon") || "-111.89");
+  const lat = Number.isFinite(latRaw) ? Math.min(90, Math.max(-90, latRaw)) : 40.76;
+  const lon = Number.isFinite(lonRaw) ? Math.min(180, Math.max(-180, lonRaw)) : -111.89;
+  const day = (url.searchParams.get("day") || "").slice(0, 10);
+  if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    return Response.json(
+      { error: "bad_day" },
+      { status: 400, headers: noStore },
+    );
+  }
 
   try {
     const endpoint = new URL("https://api.open-meteo.com/v1/forecast");
     endpoint.searchParams.set("latitude", String(lat));
     endpoint.searchParams.set("longitude", String(lon));
-    endpoint.searchParams.set("daily", "weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max");
+    endpoint.searchParams.set(
+      "daily",
+      "weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+    );
     endpoint.searchParams.set("timezone", "auto");
     endpoint.searchParams.set("forecast_days", "7");
-    const res = await fetch(endpoint.toString(), { next: { revalidate: 1800 } });
+    const res = await fetch(endpoint.toString(), {
+      signal: AbortSignal.timeout(8000),
+      next: { revalidate: 1800 },
+    });
     if (!res.ok) throw new Error(`meteo ${res.status}`);
     const data = (await res.json()) as {
       daily: {

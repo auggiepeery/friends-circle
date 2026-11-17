@@ -1,5 +1,6 @@
 import { noStore, requireViewer } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { clip, readJsonBounded } from "@/lib/http";
 import type { Notification } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -20,17 +21,21 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const viewer = await requireViewer(request);
   if (viewer instanceof Response) return viewer;
-  const body = (await request.json()) as { action?: string; id?: string };
+  const body = await readJsonBounded<{ action?: string; id?: string }>(request);
+  if (body instanceof Response) return body;
   if (body.action === "read_all") {
     await sql(
       `update notifications set read = true where user_id = $1 and read = false`,
       [viewer.sub],
     );
-  } else if (body.action === "read" && body.id) {
-    await sql(
-      `update notifications set read = true where id = $1 and user_id = $2`,
-      [body.id, viewer.sub],
-    );
+  } else if (body.action === "read") {
+    const id = clip(body.id, 80);
+    if (id) {
+      await sql(
+        `update notifications set read = true where id = $1 and user_id = $2`,
+        [id, viewer.sub],
+      );
+    }
   }
   return Response.json({ ok: true }, { headers: noStore });
 }
