@@ -29,7 +29,9 @@ export async function canAccessPlan(
 
 /** Public-safe plan fields — never includes share_token. */
 export function publicPlan(plan: Plan) {
-  const { share_token: _share, ...rest } = plan;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { share_token, ...rest } = plan;
+  void share_token;
   return rest;
 }
 
