@@ -7,31 +7,31 @@ type Member = {
   user_id: string;
   display_name: string;
   availability_hint: string;
+  role?: string;
 };
 
 export default function CirclePage() {
   const [members, setMembers] = useState<Member[]>([]);
-  const [inviteUrl, setInviteUrl] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
   const [hint, setHint] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [newFriend, setNewFriend] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    Promise.all([
+  async function load() {
+    const [circle, me] = await Promise.all([
       fetch("/api/circle").then(async (r) => {
         if (!r.ok) throw new Error("forbidden");
         return r.json();
       }),
       fetch("/api/me").then((r) => r.json()),
-    ])
-      .then(([circle, me]) => {
-        setMembers(circle.members || []);
-        setInviteUrl(circle.inviteUrl || "");
-        setInviteCode(circle.inviteCode || "");
-        if (me.viewer?.availability_hint) setHint(me.viewer.availability_hint);
-      })
-      .catch(() => setError("Circle is invite-only — join with a code first."));
+    ]);
+    setMembers(circle.members || []);
+    if (me.viewer?.availability_hint) setHint(me.viewer.availability_hint);
+  }
+
+  useEffect(() => {
+    load().catch(() => setError("Sign in to see the circle."));
   }, []);
 
   async function saveHint() {
@@ -42,14 +42,34 @@ export default function CirclePage() {
     });
   }
 
-  function copyInvite() {
-    if (!inviteUrl) return;
-    void navigator.clipboard.writeText(inviteUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
+  async function addFriend(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setMessage("");
+    setError("");
+    const res = await fetch("/api/circle", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "add_friend", name: newFriend }),
+    });
+    const data = await res.json();
+    setBusy(false);
+    if (!res.ok) {
+      setError(
+        data.error === "name_taken"
+          ? "That name is already on the list."
+          : "Couldn’t add friend",
+      );
+      return;
+    }
+    setMessage(
+      `Added ${data.friend.name} — their password is exactly that name.`,
+    );
+    setNewFriend("");
+    await load();
   }
 
-  if (error) {
+  if (error && members.length === 0) {
     return (
       <section className={ui.hero}>
         <h1 className={ui.headline}>Circle</h1>
@@ -58,6 +78,11 @@ export default function CirclePage() {
     );
   }
 
+  const friends = members.filter(
+    (m) => m.role === "friend" || m.role === "founder" || !m.role,
+  );
+  const guests = members.filter((m) => m.role === "guest");
+
   return (
     <>
       <section className={`${ui.hero} rise`}>
@@ -65,17 +90,38 @@ export default function CirclePage() {
           The circle
         </h1>
         <p className={ui.lede}>
-          Small group, one shared calendar. Share the invite link with your
-          friends — only people with it can see the plans.
+          Named friends show up on the sign-in picker. Their password is their
+          display name, spelled the same way. Guests type a name with no
+          password.
         </p>
-        {inviteUrl ? (
-          <div className={ui.ctaRow}>
-            <button type="button" className={`${ui.btn} ${ui.btnLamp}`} onClick={copyInvite}>
-              {copied ? "Copied" : "Copy invite link"}
-            </button>
-            <span className={ui.chip}>Code {inviteCode}</span>
-          </div>
-        ) : null}
+      </section>
+
+      <section className={ui.section}>
+        <h2 className={ui.sectionTitle}>Add a friend</h2>
+        <form
+          onSubmit={addFriend}
+          style={{ display: "grid", gap: "0.75rem", marginTop: "0.75rem" }}
+        >
+          <input
+            className={ui.input}
+            value={newFriend}
+            onChange={(e) => setNewFriend(e.target.value)}
+            placeholder="Friend’s display name"
+            required
+            minLength={2}
+            maxLength={120}
+          />
+          <button
+            type="submit"
+            className={`${ui.btn} ${ui.btnLamp}`}
+            disabled={busy}
+            style={{ justifySelf: "start" }}
+          >
+            {busy ? "Adding…" : "Add to picker"}
+          </button>
+          {message ? <p className={ui.meta}>{message}</p> : null}
+          {error ? <p className={ui.error}>{error}</p> : null}
+        </form>
       </section>
 
       <section className={ui.section}>
@@ -93,16 +139,19 @@ export default function CirclePage() {
       </section>
 
       <section className={ui.section}>
-        <h2 className={ui.sectionTitle}>Who’s in</h2>
-        {members.length === 0 ? (
-          <p className={ui.empty}>Just you so far — send the invite link.</p>
+        <h2 className={ui.sectionTitle}>Named friends</h2>
+        {friends.length === 0 ? (
+          <p className={ui.empty}>No named friends yet — add one above.</p>
         ) : (
           <div className={ui.list}>
-            {members.map((m) => (
+            {friends.map((m) => (
               <div key={m.user_id} className={ui.planRow}>
                 <div>
                   <div className={ui.planTitle}>{m.display_name || "Friend"}</div>
                   <div className={ui.meta}>
+                    {m.role === "founder" ? (
+                      <span className={ui.chip}>Founder</span>
+                    ) : null}
                     {m.availability_hint ? (
                       <span className={ui.chip}>{m.availability_hint}</span>
                     ) : (
@@ -115,6 +164,19 @@ export default function CirclePage() {
           </div>
         )}
       </section>
+
+      {guests.length > 0 ? (
+        <section className={ui.section}>
+          <h2 className={ui.sectionTitle}>Recent guests</h2>
+          <div className={ui.list}>
+            {guests.map((m) => (
+              <div key={m.user_id} className={ui.planRow}>
+                <div className={ui.planTitle}>{m.display_name || "Guest"}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </>
   );
 }

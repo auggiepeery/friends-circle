@@ -111,11 +111,24 @@
   font-size: 0.95rem;
 }
 
+.gateLabel {
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--mist-dim);
+}
+
 .gateInput {
   padding: 0.75rem 0.9rem;
   border-radius: 12px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.04);
+  color: var(--mist);
+  width: 100%;
+}
+
+.gateInput option {
+  color: #04201f;
 }
 
 .gateBtn {

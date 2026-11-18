@@ -2,11 +2,14 @@ import { noStore, optionalViewer } from "@/lib/auth";
 import {
   clearGuestCookieHeader,
   guestCookieHeader,
-  newGuestId,
 } from "@/lib/guest";
-import { isCircleMember } from "@/lib/group";
+import {
+  isCircleMember,
+  signInAsFounder,
+  signInAsFriend,
+  signInAsGuest,
+} from "@/lib/group";
 import { MAX_TITLE, clip, readJsonBounded } from "@/lib/http";
-import { sql } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -31,12 +34,17 @@ export async function GET(request: Request) {
   );
 }
 
-/** Display-name session only — does not grant calendar access. */
+type SessionBody = {
+  action?: string;
+  mode?: "friend" | "guest" | "founder";
+  friendId?: string;
+  name?: string;
+  password?: string;
+};
+
+/** Picker sign-in: friend (+ password=name), guest (typed name), or founder secret. */
 export async function POST(request: Request) {
-  const body = await readJsonBounded<{
-    action?: string;
-    name?: string;
-  }>(request);
+  const body = await readJsonBounded<SessionBody>(request);
   if (body instanceof Response) return body;
 
   if (body.action === "sign_out") {
@@ -51,58 +59,107 @@ export async function POST(request: Request) {
     );
   }
 
-  const name = clip(body.name, MAX_TITLE);
-  if (name.length < 2) {
-    return Response.json(
-      { error: "name_required" },
-      { status: 400, headers: noStore },
-    );
-  }
+  const mode = body.mode;
+  const password = clip(body.password, 200);
 
-  const existing = await optionalViewer(request);
-  if (existing?.via === "cursor") {
-    const member = await isCircleMember(existing.sub);
+  if (mode === "friend") {
+    const friendId = clip(body.friendId, 80);
+    if (!friendId) {
+      return Response.json(
+        { error: "friend_required" },
+        { status: 400, headers: noStore },
+      );
+    }
+    const result = await signInAsFriend(friendId, password);
+    if (!result.ok) {
+      return Response.json(
+        { error: result.error },
+        { status: 403, headers: noStore },
+      );
+    }
+    const member = await isCircleMember(friendId);
     return Response.json(
       {
         viewer: {
-          sub: existing.sub,
-          name: existing.name,
-          email: existing.email,
-          simulated: existing.simulated,
-          via: existing.via,
+          sub: friendId,
+          name: result.name,
+          email: "",
+          simulated: false,
+          via: "friend",
           member,
         },
       },
-      { headers: noStore },
+      {
+        headers: {
+          ...noStore,
+          "set-cookie": guestCookieHeader(friendId),
+        },
+      },
     );
   }
 
-  const guestId = existing?.via === "guest" ? existing.sub : newGuestId();
-  await sql(
-    `insert into profiles (id, email, display_name)
-     values ($1, '', $2)
-     on conflict (id) do update set display_name = excluded.display_name`,
-    [guestId, name],
-  );
-  const member = await isCircleMember(guestId);
+  if (mode === "guest") {
+    const name = clip(body.name, MAX_TITLE);
+    const result = await signInAsGuest(name);
+    if (!result.ok) {
+      return Response.json(
+        { error: result.error },
+        { status: 400, headers: noStore },
+      );
+    }
+    return Response.json(
+      {
+        viewer: {
+          sub: result.userId,
+          name: result.name,
+          email: "",
+          simulated: false,
+          via: "guest",
+          member: true,
+        },
+      },
+      {
+        status: 201,
+        headers: {
+          ...noStore,
+          "set-cookie": guestCookieHeader(result.userId),
+        },
+      },
+    );
+  }
+
+  if (mode === "founder") {
+    const name = clip(body.name, MAX_TITLE);
+    const result = await signInAsFounder(password, name || undefined);
+    if (!result.ok) {
+      return Response.json(
+        { error: result.error },
+        { status: 403, headers: noStore },
+      );
+    }
+    return Response.json(
+      {
+        viewer: {
+          sub: result.userId,
+          name: result.name,
+          email: "",
+          simulated: false,
+          via: "friend",
+          member: true,
+        },
+        founded: result.founded,
+      },
+      {
+        headers: {
+          ...noStore,
+          "set-cookie": guestCookieHeader(result.userId),
+        },
+      },
+    );
+  }
 
   return Response.json(
-    {
-      viewer: {
-        sub: guestId,
-        name,
-        email: "",
-        simulated: false,
-        via: "guest",
-        member,
-      },
-    },
-    {
-      status: existing ? 200 : 201,
-      headers: {
-        ...noStore,
-        "set-cookie": guestCookieHeader(guestId),
-      },
-    },
+    { error: "mode_required" },
+    { status: 400, headers: noStore },
   );
 }
