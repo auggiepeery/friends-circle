@@ -92,18 +92,27 @@ function withOccurrence(
   };
 }
 
+/** node-pg returns Date for timestamptz; PGlite often returns strings. */
+function planTimeKey(value: string | Date | null | undefined): string {
+  if (value == null || value === "") return "";
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? "" : value.toISOString();
+  }
+  return String(value);
+}
+
 function mergePlanRows(rows: PlanListRow[]): PlanListRow[] {
   const seen = new Set<string>();
   const out: PlanListRow[] = [];
   for (const row of rows) {
-    const key = `${row.id}::${row.occurrence_key || row.starts_at || ""}`;
+    const key = `${row.id}::${row.occurrence_key || planTimeKey(row.starts_at)}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(row);
   }
   out.sort((a, b) => {
-    const aT = a.starts_at || a.created_at;
-    const bT = b.starts_at || b.created_at;
+    const aT = planTimeKey(a.starts_at) || planTimeKey(a.created_at);
+    const bT = planTimeKey(b.starts_at) || planTimeKey(b.created_at);
     return aT.localeCompare(bT);
   });
   return out;
