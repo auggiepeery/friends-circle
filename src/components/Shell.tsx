@@ -5,12 +5,13 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   PREFS_EVENT,
-  applyPrefsToDocument,
+  hydratePrefsForUser,
   readPrefs,
 } from "@/lib/prefs";
 import styles from "./Shell.module.css";
 
 type Me = {
+  sub?: string;
   name: string;
   email: string;
   simulated: boolean;
@@ -34,20 +35,22 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [showUnreadBadge, setShowUnreadBadge] = useState(true);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
 
   async function refresh() {
     const data = await fetch("/api/me").then((r) => r.json());
-    setMe(data.viewer);
+    const viewer = data.viewer as Me | null;
+    setMe(viewer);
+    await hydratePrefsForUser(
+      viewer?.member && viewer.sub ? viewer.sub : null,
+    );
     setLoaded(true);
-    return data.viewer as Me | null;
+    return viewer;
   }
 
   useEffect(() => {
-    applyPrefsToDocument();
     const sync = () => {
-      const prefs = readPrefs();
-      applyPrefsToDocument(prefs);
-      setShowUnreadBadge(prefs.showUnreadBadge);
+      setShowUnreadBadge(readPrefs().showUnreadBadge);
     };
     sync();
     window.addEventListener(PREFS_EVENT, sync);
@@ -59,22 +62,44 @@ export function Shell({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onResize = () => {
+      // iOS Safari: keyboard shrinks visualViewport — hide sticky bottom nav.
+      const shrink = window.innerHeight - vv.height;
+      setKeyboardOpen(shrink > 120);
+    };
+    onResize();
+    vv.addEventListener("resize", onResize);
+    vv.addEventListener("scroll", onResize);
+    return () => {
+      vv.removeEventListener("resize", onResize);
+      vv.removeEventListener("scroll", onResize);
+    };
+  }, []);
+
+  useEffect(() => {
     let alive = true;
     Promise.all([
       fetch("/api/me").then((r) => r.json()),
       fetch("/api/signin").then((r) => r.json()),
     ])
-      .then(([meData, status]) => {
+      .then(async ([meData, status]) => {
         if (!alive) return;
-        setMe(meData.viewer);
+        const viewer = meData.viewer as Me | null;
+        setMe(viewer);
         setEmpty(Boolean(status.empty));
         setFounderAvailable(status.founderAvailable !== false);
         setMode(status.empty ? "founder" : "friend");
-        setLoaded(true);
+        await hydratePrefsForUser(
+          viewer?.member && viewer.sub ? viewer.sub : null,
+        );
+        if (alive) setLoaded(true);
       })
       .catch(() => {
         if (alive) {
           setMe(null);
+          void hydratePrefsForUser(null);
           setLoaded(true);
         }
       });
@@ -266,22 +291,38 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
       ) : null}
 
-      {member ? (
-        <nav className={styles.mobile} aria-label="Mobile">
-          <Link href="/" data-active={active("/")}>
+      {member && !keyboardOpen ? (
+        <nav className={styles.mobile} aria-label="Primary tabs">
+          <Link href="/" data-active={active("/")} aria-current={active("/") ? "page" : undefined}>
             Cal
           </Link>
-          <Link href="/circle" data-active={active("/circle")}>
+          <Link
+            href="/circle"
+            data-active={active("/circle")}
+            aria-current={active("/circle") ? "page" : undefined}
+          >
             Circle
           </Link>
-          <Link href="/plans/new" data-active={active("/plans/new")}>
+          <Link
+            href="/plans/new"
+            data-active={active("/plans/new")}
+            aria-current={active("/plans/new") ? "page" : undefined}
+          >
             Add
           </Link>
-          <Link href="/notifications" data-active={active("/notifications")}>
+          <Link
+            href="/notifications"
+            data-active={active("/notifications")}
+            aria-current={active("/notifications") ? "page" : undefined}
+          >
             Alerts
           </Link>
-          <Link href="/settings" data-active={active("/settings")}>
-            Set
+          <Link
+            href="/settings"
+            data-active={active("/settings")}
+            aria-current={active("/settings") ? "page" : undefined}
+          >
+            Prefs
           </Link>
         </nav>
       ) : null}

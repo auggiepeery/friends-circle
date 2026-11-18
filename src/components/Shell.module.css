@@ -1,7 +1,10 @@
 .shell {
   min-height: 100dvh;
+  min-height: -webkit-fill-available;
   display: flex;
   flex-direction: column;
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
 }
 
 .top {
@@ -9,9 +12,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1rem 1.25rem;
+  padding: calc(0.85rem + var(--safe-top)) 1.25rem 0.85rem;
   border-bottom: 1px solid var(--line);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   background: var(--chrome);
   position: sticky;
   top: 0;
@@ -25,6 +29,9 @@
   letter-spacing: -0.03em;
   color: var(--mist);
   white-space: nowrap;
+  min-height: var(--touch-min);
+  display: inline-flex;
+  align-items: center;
 }
 
 .brand span {
@@ -42,7 +49,10 @@
 .nav a,
 .who {
   font-size: 0.9rem;
-  padding: 0.45rem 0.75rem;
+  padding: 0.55rem 0.8rem;
+  min-height: var(--touch-min);
+  display: inline-flex;
+  align-items: center;
   border-radius: 999px;
   color: var(--mist-dim);
   transition: color 0.2s, background 0.2s;
@@ -51,7 +61,7 @@
 .nav a:hover,
 .nav a[data-active="true"] {
   color: var(--mist);
-  background: rgba(31, 166, 160, 0.14);
+  background: color-mix(in srgb, var(--lagoon) 18%, transparent);
 }
 
 .badge {
@@ -81,7 +91,7 @@
   flex: 1;
   width: min(1080px, 100%);
   margin: 0 auto;
-  padding: 1.25rem 1.25rem 4.5rem;
+  padding: 1.25rem 1.25rem calc(5.5rem + var(--safe-bottom));
 }
 
 .gate {
@@ -119,12 +129,14 @@
 }
 
 .gateInput {
-  padding: 0.75rem 0.9rem;
+  padding: 0.85rem 0.95rem;
+  min-height: var(--touch-min);
   border-radius: 12px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.04);
   color: var(--mist);
   width: 100%;
+  font-size: 16px;
 }
 
 .gateInput option {
@@ -133,7 +145,8 @@
 
 .gateBtn {
   justify-self: start;
-  padding: 0.7rem 1.1rem;
+  padding: 0.85rem 1.2rem;
+  min-height: var(--touch-min);
   border-radius: 999px;
   background: var(--lagoon);
   color: #04201f;
@@ -159,13 +172,15 @@
 .signOutRow {
   width: min(1080px, 100%);
   margin: 0 auto;
-  padding: 0 1.25rem 5rem;
+  padding: 0 1.25rem calc(5.25rem + var(--safe-bottom));
 }
 
 .signOut {
   color: var(--mist-dim);
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   text-decoration: underline;
+  min-height: var(--touch-min);
+  padding: 0.35rem 0;
 }
 
 .loading {
@@ -178,38 +193,103 @@
 
 @media (max-width: 720px) {
   .top {
-    padding: 0.85rem 1rem;
+    padding: calc(0.65rem + var(--safe-top)) 1rem 0.65rem;
   }
 
   .nav {
     display: none;
   }
 
+  .main {
+    padding: 1rem 1rem calc(6.75rem + var(--safe-bottom));
+  }
+
+  .signOutRow {
+    padding-bottom: calc(6.5rem + var(--safe-bottom));
+  }
+
+  .gate {
+    padding: 0 1rem;
+  }
+
   .mobile {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     position: fixed;
     bottom: 0;
     left: 0;
     right: 0;
-    z-index: 30;
-    background: var(--chrome);
+    z-index: 40;
+    /* Solid-enough chrome so tabs stay readable over content */
+    background: color-mix(in srgb, var(--ink) 88%, transparent);
     border-top: 1px solid var(--line);
-    backdrop-filter: blur(12px);
-    padding: 0.45rem 0.35rem calc(0.45rem + env(safe-area-inset-bottom));
+    backdrop-filter: blur(18px) saturate(1.2);
+    -webkit-backdrop-filter: blur(18px) saturate(1.2);
+    /* Comfortable thumb zone + home-indicator safe area */
+    padding: 0.35rem 0.3rem calc(0.45rem + var(--safe-bottom));
+    padding-left: max(0.3rem, var(--safe-left));
+    padding-right: max(0.3rem, var(--safe-right));
+    gap: 0.2rem;
+    /* Keep bar sticky above keyboard/scroll bounce */
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
   }
 
   .mobile a {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.15rem;
-    font-size: 0.68rem;
+    justify-content: center;
+    gap: 0.2rem;
+    width: 100%;
+    /* Larger than 44px — fat-finger friendly on 5-up iPhone bar */
+    min-height: 52px;
+    padding: 0.55rem 0.15rem;
+    border-radius: 14px;
+    font-family: var(--font-display);
+    font-size: clamp(0.72rem, 2.9vw, 0.82rem);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.05;
+    text-align: center;
     color: var(--mist-dim);
-    padding: 0.35rem 0.2rem;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Expand hit box slightly into the gutter without visual overlap. */
+  .mobile a::before {
+    content: "";
+    position: absolute;
+    inset: -0.2rem -0.05rem;
+    border-radius: 16px;
   }
 
   .mobile a[data-active="true"] {
-    color: var(--lagoon);
+    color: var(--mist);
+    background: color-mix(in srgb, var(--lagoon) 28%, transparent);
+    box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--lagoon) 55%, transparent);
+  }
+
+  .mobile a[data-active="true"]::after {
+    content: "";
+    position: absolute;
+    top: 0.28rem;
+    left: 50%;
+    width: 1.15rem;
+    height: 0.22rem;
+    border-radius: 999px;
+    background: var(--lagoon);
+    transform: translateX(-50%);
+  }
+}
+
+/* When the virtual keyboard is open, reduce bottom chrome collision a bit. */
+@supports (height: 100dvh) {
+  .shell {
+    min-height: 100dvh;
   }
 }

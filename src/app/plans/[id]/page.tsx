@@ -53,6 +53,10 @@ export default function PlanDetailPage() {
   const [comment, setComment] = useState("");
   const [expenseDesc, setExpenseDesc] = useState("");
   const [expenseAmount, setExpenseAmount] = useState("");
+  const [pollKind, setPollKind] = useState("time");
+  const [pollQuestion, setPollQuestion] = useState("");
+  const [pollOptions, setPollOptions] = useState("");
+  const [addingPoll, setAddingPoll] = useState(false);
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -141,6 +145,44 @@ export default function PlanDetailPage() {
     });
     setExpenseDesc("");
     setExpenseAmount("");
+    await load();
+  }
+
+  async function addPoll(e: React.FormEvent) {
+    e.preventDefault();
+    const options = pollOptions
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (!pollQuestion.trim() || options.length < 2) {
+      setError("Poll needs a question and at least 2 options (one per line).");
+      return;
+    }
+    setAddingPoll(true);
+    setError("");
+    const res = await fetch(`/api/plans/${id}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "poll",
+        kind: pollKind,
+        question: pollQuestion.trim(),
+        options,
+      }),
+    });
+    setAddingPoll(false);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setError(
+        data.error === "need_options"
+          ? "Need at least 2 poll options."
+          : "Couldn’t add poll",
+      );
+      return;
+    }
+    setPollQuestion("");
+    setPollOptions("");
+    setPollKind("time");
     await load();
   }
 
@@ -361,7 +403,7 @@ export default function PlanDetailPage() {
           <section className={ui.panel}>
             <h2 className={ui.panelTitle}>Polls</h2>
             {data.polls.length === 0 ? (
-              <p className={ui.empty}>No polls on this plan.</p>
+              <p className={ui.empty}>No polls yet — add one below.</p>
             ) : (
               data.polls.map((poll) => (
                 <div key={poll.id} style={{ marginBottom: "1rem" }}>
@@ -383,6 +425,51 @@ export default function PlanDetailPage() {
                 </div>
               ))
             )}
+            <form className={ui.form} onSubmit={addPoll} style={{ marginTop: "1rem" }}>
+              <h3 className={ui.panelTitle} style={{ fontSize: "1rem" }}>
+                Add a poll
+              </h3>
+              <label className={ui.label}>
+                Kind
+                <select
+                  className={ui.select}
+                  value={pollKind}
+                  onChange={(e) => setPollKind(e.target.value)}
+                >
+                  <option value="time">Times</option>
+                  <option value="place">Places</option>
+                </select>
+              </label>
+              <label className={ui.label}>
+                Question
+                <input
+                  className={ui.input}
+                  value={pollQuestion}
+                  onChange={(e) => setPollQuestion(e.target.value)}
+                  placeholder="When works? / Where should we go?"
+                  maxLength={200}
+                  required
+                />
+              </label>
+              <label className={ui.label}>
+                Options (one per line)
+                <textarea
+                  className={ui.textarea}
+                  value={pollOptions}
+                  onChange={(e) => setPollOptions(e.target.value)}
+                  placeholder={"Fri 7pm\nSat 6pm\nSun afternoon"}
+                  required
+                />
+              </label>
+              <button
+                type="submit"
+                className={`${ui.btn} ${ui.btnGhost}`}
+                disabled={addingPoll}
+                style={{ justifySelf: "start" }}
+              >
+                {addingPoll ? "Adding…" : "Add poll"}
+              </button>
+            </form>
           </section>
 
           <section className={ui.panel}>

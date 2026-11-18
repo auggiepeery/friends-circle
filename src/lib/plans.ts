@@ -187,13 +187,51 @@ export async function updatePlan(
   return rows[0] ?? null;
 }
 
-/** Hard-delete a plan; related RSVPs/comments/polls/expenses cascade. */
+/** Hard-delete a plan; related RSVPs/comments/polls/expenses cascade.
+ * Also purge Alerts that deep-link to this plan so deleted events vanish from notifications.
+ */
 export async function deletePlan(planId: string): Promise<boolean> {
+  const href = `/plans/${planId}`;
+  await sql(
+    `delete from notifications
+     where href = $1
+        or href like $2`,
+    [href, `${href}/%`],
+  );
   const rows = await sql<{ id: string }>(
     `delete from plans where id = $1 returning id`,
     [planId],
   );
   return Boolean(rows[0]);
+}
+
+/** Drop alerts that still point at plans which no longer exist (legacy orphans). */
+export async function purgeOrphanPlanNotifications(
+  userId?: string,
+): Promise<void> {
+  if (userId) {
+    await sql(
+      `delete from notifications n
+       where n.user_id = $1
+         and n.href like '/plans/%'
+         and not exists (
+           select 1 from plans p
+           where n.href = '/plans/' || p.id
+              or n.href like '/plans/' || p.id || '/%'
+         )`,
+      [userId],
+    );
+    return;
+  }
+  await sql(
+    `delete from notifications n
+     where n.href like '/plans/%'
+       and not exists (
+         select 1 from plans p
+         where n.href = '/plans/' || p.id
+            or n.href like '/plans/' || p.id || '/%'
+       )`,
+  );
 }
 
 export async function listRsvps(planId: string): Promise<Rsvp[]> {

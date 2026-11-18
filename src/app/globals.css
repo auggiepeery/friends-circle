@@ -16,11 +16,21 @@ html[data-theme="night"] {
   --font-display: var(--font-syne), "Syne", sans-serif;
   --font-body: var(--font-manrope), "Manrope", sans-serif;
   --shadow-glow: 0 0 80px rgba(31, 166, 160, 0.18);
-  --chrome: rgba(7, 22, 28, 0.55);
+  --chrome: rgba(7, 22, 28, 0.72);
   --atmosphere-a: rgba(31, 166, 160, 0.28);
   --atmosphere-b: rgba(232, 184, 109, 0.16);
   --atmosphere-c: rgba(14, 111, 107, 0.35);
   --atmosphere-base: linear-gradient(165deg, #07161c 0%, #0a1f28 45%, #0d2430 100%);
+  --orb-a: rgba(31, 166, 160, 0.55);
+  --orb-b: rgba(232, 184, 109, 0.35);
+  --surface: rgba(10, 31, 40, 0.92);
+  --surface-soft: rgba(7, 22, 28, 0.85);
+  --focus-ring: rgba(31, 166, 160, 0.55);
+  --touch-min: 44px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
 
 html[data-theme="dusk"] {
@@ -33,11 +43,16 @@ html[data-theme="dusk"] {
   --mist: rgba(255, 240, 230, 0.9);
   --mist-dim: rgba(230, 200, 180, 0.58);
   --line: rgba(255, 220, 200, 0.16);
-  --chrome: rgba(26, 16, 20, 0.6);
+  --chrome: rgba(26, 16, 20, 0.72);
   --atmosphere-a: rgba(212, 120, 74, 0.28);
   --atmosphere-b: rgba(240, 201, 138, 0.18);
   --atmosphere-c: rgba(120, 40, 55, 0.32);
   --atmosphere-base: linear-gradient(165deg, #1a1014 0%, #24141c 45%, #2a1820 100%);
+  --orb-a: rgba(212, 120, 74, 0.5);
+  --orb-b: rgba(240, 201, 138, 0.38);
+  --surface: rgba(36, 20, 28, 0.94);
+  --surface-soft: rgba(26, 16, 20, 0.88);
+  --focus-ring: rgba(212, 120, 74, 0.55);
 }
 
 html[data-theme="day"] {
@@ -52,12 +67,71 @@ html[data-theme="day"] {
   --line: rgba(8, 40, 42, 0.12);
   --danger: #c04a3c;
   --ok: #2f8f4e;
-  --chrome: rgba(232, 244, 241, 0.72);
+  --chrome: rgba(232, 244, 241, 0.82);
   --atmosphere-a: rgba(14, 127, 122, 0.18);
   --atmosphere-b: rgba(184, 135, 55, 0.14);
   --atmosphere-c: rgba(120, 180, 170, 0.22);
   --atmosphere-base: linear-gradient(165deg, #e8f4f1 0%, #dceee9 45%, #d0e6e2 100%);
   --shadow-glow: 0 0 60px rgba(14, 127, 122, 0.12);
+  --orb-a: rgba(14, 127, 122, 0.35);
+  --orb-b: rgba(184, 135, 55, 0.28);
+  --surface: rgba(250, 255, 253, 0.92);
+  --surface-soft: rgba(220, 238, 233, 0.95);
+  --focus-ring: rgba(14, 127, 122, 0.5);
+}
+
+/* Deep reef — navy abyss + seafoam (brand ocean peeper, not purple). */
+html[data-theme="reef"] {
+  --ink: #06131f;
+  --ink-soft: #0b2233;
+  --lagoon: #3ec4b8;
+  --lagoon-deep: #1a8a82;
+  --lamp: #f28b7c;
+  --lamp-hot: #ffb0a4;
+  --mist: rgba(220, 242, 248, 0.9);
+  --mist-dim: rgba(160, 200, 214, 0.58);
+  --line: rgba(180, 220, 230, 0.14);
+  --danger: #e07468;
+  --ok: #6fd4a0;
+  --maybe: #f28b7c;
+  --chrome: rgba(6, 19, 31, 0.75);
+  --atmosphere-a: rgba(62, 196, 184, 0.26);
+  --atmosphere-b: rgba(242, 139, 124, 0.16);
+  --atmosphere-c: rgba(20, 70, 110, 0.4);
+  --atmosphere-base: linear-gradient(165deg, #06131f 0%, #0a1c2c 42%, #0b2233 100%);
+  --shadow-glow: 0 0 80px rgba(62, 196, 184, 0.2);
+  --orb-a: rgba(62, 196, 184, 0.5);
+  --orb-b: rgba(242, 139, 124, 0.34);
+  --surface: rgba(8, 28, 42, 0.94);
+  --surface-soft: rgba(6, 19, 31, 0.88);
+  --focus-ring: rgba(62, 196, 184, 0.55);
+}
+
+/* Lamp citrus — charcoal night with vivid amber lamp (cozy peep). */
+html[data-theme="citrus"] {
+  --ink: #12140f;
+  --ink-soft: #1d2218;
+  --lagoon: #c9a227;
+  --lagoon-deep: #8f7314;
+  --lamp: #f4d35e;
+  --lamp-hot: #ffe99a;
+  --mist: rgba(244, 242, 230, 0.9);
+  --mist-dim: rgba(200, 196, 170, 0.58);
+  --line: rgba(240, 230, 180, 0.14);
+  --danger: #d96b5c;
+  --ok: #8fbf6a;
+  --maybe: #f4d35e;
+  --chrome: rgba(18, 20, 15, 0.75);
+  --atmosphere-a: rgba(201, 162, 39, 0.22);
+  --atmosphere-b: rgba(244, 211, 94, 0.14);
+  --atmosphere-c: rgba(40, 70, 55, 0.35);
+  --atmosphere-base: linear-gradient(165deg, #12140f 0%, #181c14 45%, #1d2218 100%);
+  --shadow-glow: 0 0 80px rgba(201, 162, 39, 0.18);
+  --orb-a: rgba(201, 162, 39, 0.45);
+  --orb-b: rgba(244, 211, 94, 0.32);
+  --surface: rgba(24, 28, 20, 0.94);
+  --surface-soft: rgba(18, 20, 15, 0.9);
+  --focus-ring: rgba(201, 162, 39, 0.55);
 }
 
 * {
@@ -66,9 +140,17 @@ html[data-theme="day"] {
   padding: 0;
 }
 
+html {
+  /* Avoid iOS Safari auto-zoom + rubber-band oddities around fixed chrome. */
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 html,
 body {
   min-height: 100%;
+  min-height: 100dvh;
 }
 
 body {
@@ -77,11 +159,13 @@ body {
   background: var(--ink);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  overscroll-behavior-y: none;
 }
 
 a {
   color: inherit;
   text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 button,
@@ -90,6 +174,7 @@ textarea,
 select {
   font: inherit;
   color: inherit;
+  -webkit-tap-highlight-color: transparent;
 }
 
 button {
@@ -98,8 +183,15 @@ button {
   background: none;
 }
 
+/* ≥16px inputs prevent iOS Safari focus zoom. */
+input,
+textarea,
+select {
+  font-size: 16px;
+}
+
 ::selection {
-  background: rgba(31, 166, 160, 0.35);
+  background: color-mix(in srgb, var(--lagoon) 45%, transparent);
   color: #fff;
 }
 
@@ -144,13 +236,13 @@ button {
 .orb--lagoon {
   top: -8%;
   left: -6%;
-  background: radial-gradient(circle, rgba(31, 166, 160, 0.55), transparent 70%);
+  background: radial-gradient(circle, var(--orb-a), transparent 70%);
 }
 
 .orb--lamp {
   right: -10%;
   top: 18%;
-  background: radial-gradient(circle, rgba(232, 184, 109, 0.35), transparent 70%);
+  background: radial-gradient(circle, var(--orb-b), transparent 70%);
   animation-delay: -6s;
 }
 
@@ -187,10 +279,10 @@ button {
 @keyframes pulse-soft {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(31, 166, 160, 0.35);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--lagoon) 40%, transparent);
   }
   50% {
-    box-shadow: 0 0 0 10px rgba(31, 166, 160, 0);
+    box-shadow: 0 0 0 10px transparent;
   }
 }
 
@@ -213,4 +305,11 @@ html[data-reduce-motion="true"] *::before,
 html[data-reduce-motion="true"] *::after {
   animation: none !important;
   transition: none !important;
+}
+
+/* Standalone PWA: a little extra breathing room under status bar chrome. */
+@media (display-mode: standalone) {
+  :root {
+    --safe-top: max(env(safe-area-inset-top, 0px), 0.35rem);
+  }
 }

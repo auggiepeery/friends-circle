@@ -8,6 +8,7 @@ import {
   type ThemeId,
   DEFAULT_PREFS,
   PREFS_EVENT,
+  THEME_OPTIONS,
   patchPrefs,
   readPrefs,
 } from "@/lib/prefs";
@@ -73,7 +74,7 @@ export default function SettingsPage() {
 
   function updatePref<K extends keyof ClientPrefs>(key: K, value: ClientPrefs[K]) {
     setPrefs(patchPrefs({ [key]: value }));
-    setMessage("Appearance saved on this device.");
+    setMessage("Saved to your profile.");
     setError("");
   }
 
@@ -175,8 +176,8 @@ export default function SettingsPage() {
           Settings
         </h1>
         <p className={ui.lede}>
-          Theme and calendar prefs stay on this device. Profile and circle
-          controls sync for everyone in Fun Peepers.
+          Theme and calendar prefs save to your Fun Peepers profile (follow you
+          when you sign in). Circle controls sync for everyone.
         </p>
         {message ? <p className={ui.meta}>{message}</p> : null}
         {error ? <p className={ui.error}>{error}</p> : null}
@@ -185,26 +186,22 @@ export default function SettingsPage() {
       <section className={ui.section}>
         <h2 className={ui.sectionTitle}>Appearance</h2>
         <p className={ui.muted} style={{ marginBottom: "0.85rem" }}>
-          Pick a look for this browser.
+          Pick a look — saved on your signed-in profile, not shared with others
+          on this phone.
         </p>
-        <div className={ui.segRow} role="radiogroup" aria-label="Theme">
-          {(
-            [
-              ["night", "Night lagoon"],
-              ["dusk", "Warm dusk"],
-              ["day", "Day mist"],
-            ] as const
-          ).map(([id, label]) => (
+        <div className={ui.themeGrid} role="radiogroup" aria-label="Theme">
+          {THEME_OPTIONS.map(({ id, label, blurb }) => (
             <button
               key={id}
               type="button"
-              className={ui.segBtn}
+              className={ui.themeCard}
               data-active={prefs.theme === id}
               aria-checked={prefs.theme === id}
               role="radio"
               onClick={() => updatePref("theme", id as ThemeId)}
             >
-              {label}
+              <strong>{label}</strong>
+              <span>{blurb}</span>
             </button>
           ))}
         </div>
@@ -216,6 +213,40 @@ export default function SettingsPage() {
           />
           <span>Reduce motion</span>
         </label>
+      </section>
+
+      <section className={ui.section}>
+        <h2 className={ui.sectionTitle}>Install as an app</h2>
+        <p className={ui.muted} style={{ marginBottom: "0.85rem" }}>
+          Fun Peepers is a PWA — add it to your Home Screen for a full-screen
+          icon, no Safari chrome.
+        </p>
+        <div className={ui.installSteps}>
+          <div className={ui.installCard}>
+            <h3>iPhone (Safari)</h3>
+            <ol>
+              <li>
+                Open the Fun Peepers <strong>home/calendar</strong> in Safari
+                (not Chrome or in-app browsers).
+              </li>
+              <li>Tap the Share button (square with ↑).</li>
+              <li>Scroll and tap <strong>Add to Home Screen</strong>.</li>
+              <li>
+                Tap Add — the icon always opens Fun Peepers alone (standalone),
+                not Safari with other tabs.
+              </li>
+            </ol>
+          </div>
+          <div className={ui.installCard}>
+            <h3>Android (Chrome)</h3>
+            <ol>
+              <li>Open Fun Peepers in Chrome.</li>
+              <li>Tap the ⋮ menu → <strong>Install app</strong> or{" "}
+                <strong>Add to Home screen</strong>.</li>
+              <li>Confirm Install — open from your app drawer like any app.</li>
+            </ol>
+          </div>
+        </div>
       </section>
 
       <section className={ui.section}>

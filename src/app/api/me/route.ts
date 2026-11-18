@@ -22,7 +22,19 @@ export async function GET(request: Request) {
   const role = member ? await memberRole(viewer.sub) : null;
   const unread = member
     ? await sql<{ count: number }>(
-        `select count(*)::int as count from notifications where user_id = $1 and read = false`,
+        `select count(*)::int as count
+         from notifications n
+         where n.user_id = $1
+           and n.read = false
+           and (
+             n.href = ''
+             or n.href not like '/plans/%'
+             or exists (
+               select 1 from plans p
+               where n.href = '/plans/' || p.id
+                  or n.href like '/plans/' || p.id || '/%'
+             )
+           )`,
         [viewer.sub],
       )
     : [{ count: 0 }];
