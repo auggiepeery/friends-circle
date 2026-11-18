@@ -9,13 +9,30 @@ export type Viewer = {
   name: string;
   simulated: boolean;
   kind: "person" | "key";
-  via: "cursor" | "guest";
+  via: "cursor" | "guest" | "friend";
 };
 
 export const noStore = { "cache-control": "private, no-store" } as const;
 
-/** Identity only — does NOT auto-join the shared circle. */
+function viaForId(id: string): "guest" | "friend" {
+  return id.startsWith("guest:") ? "guest" : "friend";
+}
+
+/** Prefer signed picker/guest cookie; Cursor identity is a local fallback only. */
 export async function optionalViewer(request: Request): Promise<Viewer | null> {
+  const sessionId = readGuestId(request);
+  if (sessionId) {
+    const profile = await getProfile(sessionId);
+    return {
+      sub: sessionId,
+      email: profile?.email || "",
+      name: profile?.display_name || "Friend",
+      simulated: false,
+      kind: "person",
+      via: viaForId(sessionId),
+    };
+  }
+
   const identity = await getIdentity(request);
   if (identity.verified && identity.kind === "person") {
     const viewer = toViewer(identity);
@@ -23,18 +40,7 @@ export async function optionalViewer(request: Request): Promise<Viewer | null> {
     return viewer;
   }
 
-  const guestId = readGuestId(request);
-  if (!guestId) return null;
-  const profile = await getProfile(guestId);
-  if (!profile) return null;
-  return {
-    sub: profile.id,
-    email: profile.email || "",
-    name: profile.display_name || "Friend",
-    simulated: false,
-    kind: "person",
-    via: "guest",
-  };
+  return null;
 }
 
 export async function requireViewer(

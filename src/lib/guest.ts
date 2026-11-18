@@ -6,7 +6,7 @@ const MAX_AGE = 60 * 60 * 24 * 180; // 180 days
 
 function secret(): string {
   // Stable per deploy when DATABASE_URL is set; otherwise a fixed local fallthrough.
-  // Not a third-party credential — only binds guest cookies to this app instance.
+  // Not a third-party credential — only binds session cookies to this app instance.
   return (
     process.env.DATABASE_URL?.trim() ||
     process.env.CURSOR_APP_ID?.trim() ||
@@ -14,14 +14,29 @@ function secret(): string {
   );
 }
 
-function sign(guestId: string): string {
-  return createHmac("sha256", secret()).update(guestId).digest("base64url");
+function sign(sessionId: string): string {
+  return createHmac("sha256", secret()).update(sessionId).digest("base64url");
 }
 
 export function newGuestId(): string {
   return `guest:${id()}`;
 }
 
+export function newFriendId(): string {
+  return `friend:${id()}`;
+}
+
+export const FOUNDER_ID = "friend:founder";
+
+function isSessionId(value: string): boolean {
+  return (
+    value.startsWith("guest:") ||
+    value.startsWith("friend:") ||
+    value.startsWith("user:")
+  );
+}
+
+/** Signed who-am-I cookie (friend, guest, or founder). */
 export function readGuestId(request: Request): string | null {
   const raw = request.headers.get("cookie") || "";
   const match = raw
@@ -30,9 +45,9 @@ export function readGuestId(request: Request): string | null {
     .find((p) => p.startsWith(`${COOKIE}=`));
   if (!match) return null;
   const value = decodeURIComponent(match.slice(COOKIE.length + 1));
-  const [guestId, sig] = value.split(".");
-  if (!guestId || !sig || !guestId.startsWith("guest:")) return null;
-  const expected = sign(guestId);
+  const [sessionId, sig] = value.split(".");
+  if (!sessionId || !sig || !isSessionId(sessionId)) return null;
+  const expected = sign(sessionId);
   try {
     const a = Buffer.from(sig);
     const b = Buffer.from(expected);
@@ -40,11 +55,11 @@ export function readGuestId(request: Request): string | null {
   } catch {
     return null;
   }
-  return guestId;
+  return sessionId;
 }
 
-export function guestCookieHeader(guestId: string): string {
-  const value = encodeURIComponent(`${guestId}.${sign(guestId)}`);
+export function guestCookieHeader(sessionId: string): string {
+  const value = encodeURIComponent(`${sessionId}.${sign(sessionId)}`);
   return `${COOKIE}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${MAX_AGE}`;
 }
 
