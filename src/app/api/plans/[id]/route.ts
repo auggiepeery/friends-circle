@@ -132,10 +132,6 @@ export async function PATCH(request: Request, ctx: Ctx) {
         ? (body.endsAt as string | null)
         : undefined,
     outdoor: typeof body.outdoor === "boolean" ? body.outdoor : undefined,
-    reminderAt:
-      body.reminderAt === null || typeof body.reminderAt === "string"
-        ? (body.reminderAt as string | null)
-        : undefined,
     recurringRule:
       typeof body.recurringRule === "string"
         ? clip(body.recurringRule, 32)

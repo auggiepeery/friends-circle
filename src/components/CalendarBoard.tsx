@@ -14,7 +14,7 @@ import {
   startOfMonth,
   weekDays,
 } from "@/lib/calendar";
-import { formatWhen } from "@/lib/format";
+import { formatWhenRange } from "@/lib/format";
 import { isCalDefaultView, readPrefs } from "@/lib/prefs";
 import styles from "./Calendar.module.css";
 
@@ -23,6 +23,7 @@ export type CalPlan = {
   title: string;
   place: string;
   starts_at: string | null;
+  ends_at?: string | null;
   my_rsvp: string | null;
   going_count: number;
   creator_name?: string;
@@ -102,26 +103,50 @@ export function CalendarBoard() {
         RSVP, chat, and poll right on the hang.
       </p>
 
-      <div className={`${styles.toolbar} rise rise-delay-2`}>
-        <div className={styles.title}>{title}</div>
-        <button type="button" className={styles.navBtn} onClick={() => shift(-1)}>
-          ←
-        </button>
-        <button
-          type="button"
-          className={styles.navBtn}
-          onClick={() => setAnchor(view === "month" ? startOfMonth(today) : today)}
-        >
-          Today
-        </button>
-        <button type="button" className={styles.navBtn} onClick={() => shift(1)}>
-          →
-        </button>
-        <div className={styles.seg} role="tablist" aria-label="Calendar view">
+      <div className={`${styles.chrome} rise rise-delay-2`}>
+        <div className={styles.chromePeriod}>
+          <button
+            type="button"
+            className={styles.chev}
+            onClick={() => shift(-1)}
+            aria-label="Previous period"
+          >
+            ‹
+          </button>
+          <div className={styles.periodBody}>
+            <div className={styles.title}>{title}</div>
+            <button
+              type="button"
+              className={styles.todayLink}
+              onClick={() =>
+                setAnchor(view === "month" ? startOfMonth(today) : today)
+              }
+            >
+              Jump to today
+            </button>
+          </div>
+          <button
+            type="button"
+            className={styles.chev}
+            onClick={() => shift(1)}
+            aria-label="Next period"
+          >
+            ›
+          </button>
+          <Link href="/plans/new" className={styles.cta} aria-label="Add plan">
+            <span className={styles.ctaPlus} aria-hidden>
+              +
+            </span>
+            <span className={styles.ctaLabel}>Add plan</span>
+          </Link>
+        </div>
+        <div className={styles.viewRail} role="tablist" aria-label="Calendar view">
           {(["month", "week", "list"] as const).map((v) => (
             <button
               key={v}
               type="button"
+              role="tab"
+              aria-selected={view === v}
               data-active={view === v}
               onClick={() => setView(v)}
             >
@@ -129,9 +154,6 @@ export function CalendarBoard() {
             </button>
           ))}
         </div>
-        <Link href="/plans/new" className={styles.cta}>
-          Add plan
-        </Link>
       </div>
 
       {loading ? <p className={styles.empty}>Loading calendar…</p> : null}
@@ -198,7 +220,7 @@ export function CalendarBoard() {
                             <strong>{e.title}</strong>
                             <div className={styles.weekMeta}>
                               {e.audience === "guest" ? "Guest · " : "Fun Peeps · "}
-                              {formatWhen(e.starts_at)}
+                              {formatWhenRange(e.starts_at, e.ends_at)}
                               {e.place ? ` · ${e.place}` : ""}
                             </div>
                           </Link>
@@ -231,7 +253,7 @@ export function CalendarBoard() {
                       <strong>{e.title}</strong>
                       <div className={styles.weekMeta}>
                         {e.audience === "guest" ? "Guest · " : "Fun Peeps · "}
-                        {formatWhen(e.starts_at)}
+                        {formatWhenRange(e.starts_at, e.ends_at)}
                         {e.place ? ` · ${e.place}` : ""}
                       </div>
                     </Link>
@@ -250,7 +272,9 @@ export function CalendarBoard() {
           ) : (
             plans.map((e) => (
               <Link key={e.id} href={`/plans/${e.id}`} className={styles.listRow}>
-                <div className={styles.listWhen}>{formatWhen(e.starts_at)}</div>
+                <div className={styles.listWhen}>
+                  {formatWhenRange(e.starts_at, e.ends_at)}
+                </div>
                 <div>
                   <div className={styles.listTitle}>{e.title}</div>
                   <div className={styles.listMeta}>

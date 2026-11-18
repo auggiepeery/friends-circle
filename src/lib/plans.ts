@@ -103,7 +103,6 @@ export async function createPlan(input: {
   outdoor?: boolean;
   lat?: number | null;
   lon?: number | null;
-  reminderAt?: string | null;
   recurringRule?: string;
   audience?: PlanAudience;
 }): Promise<Plan> {
@@ -114,7 +113,7 @@ export async function createPlan(input: {
     `insert into plans (
        id, share_token, creator_id, circle_id, audience, title, description, place,
        starts_at, ends_at, template, outdoor, lat, lon, reminder_at, recurring_rule
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,null,$15)
      returning *`,
     [
       planId,
@@ -131,7 +130,6 @@ export async function createPlan(input: {
       Boolean(input.outdoor),
       input.lat ?? null,
       input.lon ?? null,
-      input.reminderAt || null,
       input.recurringRule || "",
     ],
   );
@@ -154,7 +152,6 @@ export async function updatePlan(
     outdoor: boolean;
     lat: number | null;
     lon: number | null;
-    reminderAt: string | null;
     recurringRule: string;
     status: string;
   }>,
@@ -169,9 +166,8 @@ export async function updatePlan(
        outdoor = coalesce($7, outdoor),
        lat = case when $8::text = '__omit' then lat else $8::float8 end,
        lon = case when $9::text = '__omit' then lon else $9::float8 end,
-       reminder_at = case when $10::text = '__omit' then reminder_at else nullif($10, '')::timestamptz end,
-       recurring_rule = coalesce($11, recurring_rule),
-       status = coalesce($12, status),
+       recurring_rule = coalesce($10, recurring_rule),
+       status = coalesce($11, status),
        updated_at = now()
      where id = $1
      returning *`,
@@ -185,7 +181,6 @@ export async function updatePlan(
       patch.outdoor ?? null,
       patch.lat === undefined ? "__omit" : patch.lat,
       patch.lon === undefined ? "__omit" : patch.lon,
-      patch.reminderAt === undefined ? "__omit" : patch.reminderAt ?? "",
       patch.recurringRule ?? null,
       patch.status ?? null,
     ],

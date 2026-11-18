@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { formatWhen } from "@/lib/format";
+import { formatWhenRange } from "@/lib/format";
 import ui from "./ui.module.css";
 
 export type PlanListItem = {
@@ -9,6 +9,7 @@ export type PlanListItem = {
   title: string;
   place: string;
   starts_at: string | null;
+  ends_at?: string | null;
   outdoor: boolean;
   my_rsvp?: string | null;
   going_count?: number;
@@ -32,7 +33,7 @@ export function PlanList({
           <div>
             <div className={ui.planTitle}>{plan.title}</div>
             <div className={ui.meta}>
-              <span>{formatWhen(plan.starts_at)}</span>
+              <span>{formatWhenRange(plan.starts_at, plan.ends_at)}</span>
               {plan.place ? <span>{plan.place}</span> : null}
               {plan.outdoor ? <span className={ui.chip}>Outdoor</span> : null}
               {plan.template && plan.template !== "custom" ? (
