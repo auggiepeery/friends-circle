@@ -9,6 +9,7 @@ import {
 } from "@/lib/group";
 import { MAX_HINT, MAX_TITLE, clip, readJsonBounded } from "@/lib/http";
 import { getProfile } from "@/lib/plans";
+import { hasRoutines } from "@/lib/routines";
 import { clientKey, rateLimit } from "@/lib/rate-limit";
 import { sql } from "@/lib/db";
 
@@ -22,6 +23,9 @@ export async function GET(request: Request) {
   const profile = await getProfile(viewer.sub);
   const member = await isCircleMember(viewer.sub);
   const role = member ? await memberRole(viewer.sub) : null;
+  const routinesSet = member ? await hasRoutines(viewer.sub) : false;
+  const needsRoutines =
+    member && (role === "founder" || role === "friend") && !routinesSet;
   const unread = member
     ? await sql<{ count: number }>(
         `select count(*)::int as count
@@ -51,6 +55,8 @@ export async function GET(request: Request) {
         member,
         role,
         availability_hint: profile?.availability_hint ?? "",
+        has_routines: routinesSet,
+        needs_routines: Boolean(needsRoutines),
         unread: unread[0]?.count ?? 0,
       },
     },
