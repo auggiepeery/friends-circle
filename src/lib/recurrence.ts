@@ -13,6 +13,17 @@ export type ParsedRecurrence = {
 
 const FREQS: RecurFreq[] = ["weekly", "biweekly", "monthly"];
 
+/** Reject absurd anchors that would explode expansion or storage. */
+export const PLAN_TIME_MIN_MS = Date.UTC(2020, 0, 1);
+export const PLAN_TIME_MAX_MS = Date.UTC(2100, 0, 1);
+
+export function isReasonablePlanTime(iso: string | null | undefined): boolean {
+  if (!iso) return true;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return false;
+  return t >= PLAN_TIME_MIN_MS && t < PLAN_TIME_MAX_MS;
+}
+
 export function parseRecurringRule(rule: string | null | undefined): ParsedRecurrence | null {
   const raw = (rule || "").trim();
   if (!raw) return null;
@@ -102,6 +113,9 @@ export type OccurrenceTimes = {
   occurrenceKey: string;
 };
 
+/** Max day-steps inside one expansion call (hard ceiling). */
+const MAX_SCAN_DAYS = 120;
+
 /** Expand a recurring plan into occurrence times overlapping [rangeStart, rangeEnd). */
 export function expandRecurringOccurrences(input: {
   startsAt: string;
@@ -116,6 +130,8 @@ export function expandRecurringOccurrences(input: {
   if (!parsed) return [];
   const anchor = new Date(input.startsAt);
   if (Number.isNaN(anchor.getTime())) return [];
+  if (!isReasonablePlanTime(input.startsAt)) return [];
+
   const endAnchor = input.endsAt ? new Date(input.endsAt) : null;
   const durationMs =
     endAnchor && !Number.isNaN(endAnchor.getTime())
@@ -124,43 +140,61 @@ export function expandRecurringOccurrences(input: {
 
   const weekdays =
     parsed.weekdays.length > 0 ? parsed.weekdays : [anchor.getDay()];
-  const limit = input.limit ?? 80;
+  const limit = Math.min(input.limit ?? 80, 80);
   const out: OccurrenceTimes[] = [];
   const rangeStartMs = input.rangeStart.getTime();
   const rangeEndMs = input.rangeEnd.getTime();
+  if (!(rangeEndMs > rangeStartMs)) return [];
+
+  // Never scan before the series starts or before the requested window.
+  const windowStartMs = Math.max(rangeStartMs, anchor.getTime());
+  if (windowStartMs >= rangeEndMs) return [];
+
+  function pushOccurrence(starts: Date): void {
+    if (out.length >= limit) return;
+    if (starts.getTime() < anchor.getTime() - 60_000) return;
+    const ends =
+      durationMs != null ? new Date(starts.getTime() + durationMs) : null;
+    if (starts.getTime() >= rangeEndMs) return;
+    if ((ends ?? starts).getTime() < rangeStartMs) return;
+    out.push({
+      startsAt: starts.toISOString(),
+      endsAt: ends ? ends.toISOString() : null,
+      occurrenceKey: dayKeyLocal(starts),
+    });
+  }
 
   if (parsed.freq === "monthly") {
-    // Same calendar day-of-month as the anchor, from the first month that can hit the range.
+    // Jump to the first month that can hit the window (O(1) vs walking from year 1).
+    const win = new Date(windowStartMs);
     let cursor = new Date(
-      anchor.getFullYear(),
-      anchor.getMonth(),
+      win.getFullYear(),
+      win.getMonth(),
       anchor.getDate(),
       anchor.getHours(),
       anchor.getMinutes(),
       0,
       0,
     );
-    // Walk forward from anchor until past range end.
-    while (cursor.getTime() < rangeEndMs && out.length < limit) {
-      if (cursor.getTime() >= Math.max(rangeStartMs, anchor.getTime() - 1)) {
-        // Skip invalid month rollovers (e.g. Jan 31 → Mar 3); require same day number.
-        if (cursor.getDate() === anchor.getDate()) {
-          const starts = cursor;
-          const ends =
-            durationMs != null ? new Date(starts.getTime() + durationMs) : null;
-          if (
-            starts.getTime() < rangeEndMs &&
-            (ends ?? starts).getTime() >= rangeStartMs
-          ) {
-            out.push({
-              startsAt: starts.toISOString(),
-              endsAt: ends ? ends.toISOString() : null,
-              occurrenceKey: dayKeyLocal(starts),
-            });
-          }
-        }
+    if (cursor.getTime() < windowStartMs) {
+      cursor = new Date(
+        win.getFullYear(),
+        win.getMonth() + 1,
+        anchor.getDate(),
+        anchor.getHours(),
+        anchor.getMinutes(),
+        0,
+        0,
+      );
+    }
+    // If day overflowed (e.g. Jan 31 → Mar), skip until valid.
+    let guard = 0;
+    while (cursor.getTime() < rangeEndMs && out.length < limit && guard < 48) {
+      guard += 1;
+      if (cursor.getDate() === anchor.getDate() && cursor.getTime() >= anchor.getTime() - 60_000) {
+        pushOccurrence(cursor);
       }
-      const next = new Date(
+      cursor = new Date(
         cursor.getFullYear(),
         cursor.getMonth() + 1,
         anchor.getDate(),
@@ -169,74 +203,68 @@ export function expandRecurringOccurrences(input: {
         0,
         0,
       );
-      cursor = next;
     }
     return out;
   }
 
   const stepDays = parsed.freq === "biweekly" ? 14 : 7;
-  // For multi-weekday weekly: walk day-by-day from anchor date; for biweekly keep
-  // week alignment from the anchor's week for each selected weekday.
-  const startDay = new Date(
-    anchor.getFullYear(),
-    anchor.getMonth(),
-    anchor.getDate(),
-    12,
-    0,
-    0,
-    0,
-  );
 
-  if (parsed.freq === "weekly" && weekdays.length > 0) {
-    // Scan each calendar day in an extended window.
-    const scanStart = addDaysLocal(
-      new Date(Math.min(startDay.getTime(), input.rangeStart.getTime())),
-      -1,
-    );
-    const scanEnd = addDaysLocal(input.rangeEnd, 1);
+  if (parsed.freq === "weekly") {
+    // Bound day-scan to the request window only (plus 1 day pad), never from ancient anchor.
+    const scanStart = addDaysLocal(new Date(windowStartMs), -1);
+    const scanEnd = addDaysLocal(new Date(rangeEndMs), 1);
+    let steps = 0;
     for (
       let cursor = scanStart;
-      cursor.getTime() <= scanEnd.getTime() && out.length < limit;
-      cursor = addDaysLocal(cursor, 1)
+      cursor.getTime() <= scanEnd.getTime() &&
+      out.length < limit &&
+      steps < MAX_SCAN_DAYS;
+      cursor = addDaysLocal(cursor, 1), steps += 1
     ) {
       if (!weekdays.includes(cursor.getDay())) continue;
-      const starts = copyTime(anchor, cursor);
-      if (starts.getTime() < anchor.getTime() - 60_000) continue;
-      const ends =
-        durationMs != null ? new Date(starts.getTime() + durationMs) : null;
-      if (starts.getTime() >= rangeEndMs) continue;
-      if ((ends ?? starts).getTime() < rangeStartMs) continue;
-      out.push({
-        startsAt: starts.toISOString(),
-        endsAt: ends ? ends.toISOString() : null,
-        occurrenceKey: dayKeyLocal(starts),
-      });
+      pushOccurrence(copyTime(anchor, cursor));
     }
     return out;
   }
 
-  // biweekly (and weekly fallback): step from each weekday's first occurrence on/after anchor.
+  // biweekly: advance from first on/after windowStart for each weekday, step 14.
   for (const wd of weekdays) {
-    let cursor = new Date(startDay);
-    const delta = (wd - cursor.getDay() + 7) % 7;
-    cursor = addDaysLocal(cursor, delta);
-    while (cursor.getTime() < rangeEndMs + 86_400_000 && out.length < limit) {
-      const starts = copyTime(anchor, cursor);
-      if (starts.getTime() >= anchor.getTime() - 60_000) {
-        const ends =
-          durationMs != null ? new Date(starts.getTime() + durationMs) : null;
-        if (
-          starts.getTime() < rangeEndMs &&
-          (ends ?? starts).getTime() >= rangeStartMs
-        ) {
-          out.push({
-            startsAt: starts.toISOString(),
-            endsAt: ends ? ends.toISOString() : null,
-            occurrenceKey: dayKeyLocal(starts),
-          });
-        }
-      }
+    const winDay = new Date(
+      new Date(windowStartMs).getFullYear(),
+      new Date(windowStartMs).getMonth(),
+      new Date(windowStartMs).getDate(),
+      12,
+      0,
+      0,
+      0,
+    );
+    let cursor = addDaysLocal(winDay, (wd - winDay.getDay() + 7) % 7);
+    // Align to the biweekly phase of the original anchor weekday occurrence.
+    const anchorDay = new Date(
+      anchor.getFullYear(),
+      anchor.getMonth(),
+      anchor.getDate(),
+      12,
+      0,
+      0,
+      0,
+    );
+    const firstOfWd = addDaysLocal(anchorDay, (wd - anchorDay.getDay() + 7) % 7);
+    const diffDays = Math.round(
+      (cursor.getTime() - firstOfWd.getTime()) / 86_400_000,
+    );
+    const phase = ((diffDays % stepDays) + stepDays) % stepDays;
+    if (phase !== 0) cursor = addDaysLocal(cursor, stepDays - phase);
+
+    let steps = 0;
+    while (
+      cursor.getTime() < rangeEndMs + 86_400_000 &&
+      out.length < limit &&
+      steps < MAX_SCAN_DAYS
+    ) {
+      pushOccurrence(copyTime(anchor, cursor));
       cursor = addDaysLocal(cursor, stepDays);
+      steps += 1;
     }
   }
 

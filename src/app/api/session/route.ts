@@ -1,4 +1,5 @@
 import { noStore, optionalViewer } from "@/lib/auth";
+import { requireSameOrigin } from "@/lib/csrf";
 import {
   clearGuestCookieHeader,
   guestCookieHeader,
@@ -45,6 +46,8 @@ type SessionBody = {
 
 /** Sign-in: friend (name+password), guest (invite+name), or founder secret. */
 export async function POST(request: Request) {
+  const csrf = requireSameOrigin(request);
+  if (csrf) return csrf;
   if (!rateLimit(clientKey(request, "session"), 20, 60_000)) {
     return Response.json(
       { error: "rate_limited" },

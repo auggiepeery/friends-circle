@@ -39,13 +39,11 @@ export function rateLimit(
 }
 
 /**
- * Client address from proxy-trusted headers only.
- * Prefer x-real-ip; otherwise the rightmost X-Forwarded-For hop
- * (typically appended by the reverse proxy, not the client).
+ * Client address from the proxy-appended X-Forwarded-For hop only.
+ * Do not read x-real-ip — clients can spoof it when the edge does not overwrite.
+ * Rightmost XFF entry is the hop the platform proxy adds.
  */
 function clientAddress(request: Request): string {
-  const real = request.headers.get("x-real-ip")?.trim();
-  if (real) return real.slice(0, 128);
   const fwd = request.headers.get("x-forwarded-for");
   if (fwd) {
     const parts = fwd

@@ -1,4 +1,5 @@
 import { noStore, optionalViewer, requireViewer } from "@/lib/auth";
+import { requireSameOrigin } from "@/lib/csrf";
 import { setAvailability } from "@/lib/friends";
 import {
   isCircleMember,
@@ -8,6 +9,7 @@ import {
 } from "@/lib/group";
 import { MAX_HINT, MAX_TITLE, clip, readJsonBounded } from "@/lib/http";
 import { getProfile } from "@/lib/plans";
+import { clientKey, rateLimit } from "@/lib/rate-limit";
 import { sql } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -57,6 +59,14 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const csrf = requireSameOrigin(request);
+  if (csrf) return csrf;
+  if (!rateLimit(clientKey(request, "me-write"), 30, 60_000)) {
+    return Response.json(
+      { error: "rate_limited" },
+      { status: 429, headers: noStore },
+    );
+  }
   const viewer = await requireViewer(request);
   if (viewer instanceof Response) return viewer;
   const gate = await requireCircleMember(viewer.sub);

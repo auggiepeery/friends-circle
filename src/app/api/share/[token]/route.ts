@@ -1,4 +1,5 @@
 import { noStore } from "@/lib/auth";
+import { requireSameOrigin } from "@/lib/csrf";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,9 @@ export async function GET(_request: Request, _ctx: Ctx) {
   );
 }
 
-export async function POST(_request: Request, _ctx: Ctx) {
+export async function POST(request: Request, _ctx: Ctx) {
+  const csrf = requireSameOrigin(request);
+  if (csrf) return csrf;
   return Response.json(
     { error: "use_invite_link" },
     { status: 410, headers: noStore },

@@ -13,6 +13,13 @@ export async function readJsonBounded<T = unknown>(
   request: Request,
   maxBytes = MAX_JSON_BYTES,
 ): Promise<T | Response> {
+  const contentType = (request.headers.get("content-type") || "").toLowerCase();
+  if (!contentType.includes("application/json")) {
+    return Response.json(
+      { error: "unsupported_media_type" },
+      { status: 415, headers: noStore },
+    );
+  }
   const headerLen = Number(request.headers.get("content-length") || "0");
   if (Number.isFinite(headerLen) && headerLen > maxBytes) {
     return Response.json(
