@@ -68,14 +68,24 @@ export async function isCircleMember(userId: string): Promise<boolean> {
   return Boolean(rows[0]);
 }
 
+/** Bound personal secret for empty-circle founder bootstrap (local fallback for PGlite). */
+function founderSetupSecret(): string {
+  const fromEnv = (process.env.FOUNDER_SETUP_SECRET || "").trim();
+  if (fromEnv) return fromEnv;
+  // Published host must bind FOUNDER_SETUP_SECRET; never open-claim an empty circle there.
+  if (process.env.NODE_ENV === "production") return "";
+  return "local-founder-setup";
+}
+
 /**
  * Join only with a valid invite code.
- * Bootstrap: if the circle has zero members, the first joiner may omit the code
- * and becomes the founder (then shares the invite link with friends).
+ * Empty circle: founder must present FOUNDER_SETUP_SECRET (or the circle invite code).
+ * Public visitors cannot claim ownership with a blank code.
  */
 export async function joinWithInvite(
   userId: string,
   inviteCode?: string,
+  setupSecret?: string,
 ): Promise<{ ok: true; founder: boolean } | { ok: false; error: string }> {
   await ensureDefaultCircle();
   if (await isCircleMember(userId)) {
@@ -85,8 +95,22 @@ export async function joinWithInvite(
   const count = await memberCount();
   const expected = await getInviteCode();
   const provided = (inviteCode || "").trim();
+  const providedSetup = (setupSecret || "").trim();
+  const inviteOk =
+    Boolean(provided) && Boolean(expected) && codesEqual(provided, expected);
 
   if (count === 0) {
+    const setup = founderSetupSecret();
+    const setupOk =
+      Boolean(setup) &&
+      Boolean(providedSetup) &&
+      codesEqual(providedSetup, setup);
+    if (!inviteOk && !setupOk) {
+      return {
+        ok: false,
+        error: setup ? "setup_required" : "setup_unavailable",
+      };
+    }
     await sql(
       `insert into circle_members (circle_id, user_id)
        values ($1, $2)
@@ -96,7 +120,7 @@ export async function joinWithInvite(
     return { ok: true, founder: true };
   }
 
-  if (!provided || !expected || !codesEqual(provided, expected)) {
+  if (!inviteOk) {
     return { ok: false, error: "invalid_invite" };
   }
 
