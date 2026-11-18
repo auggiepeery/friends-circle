@@ -366,9 +366,9 @@ export default function SettingsPage() {
         <section className={ui.section}>
           <h2 className={ui.sectionTitle}>Guest invite</h2>
           <p className={ui.muted} style={{ marginBottom: "0.85rem" }}>
-            Circle-wide guest code — rotate anytime to invalidate old links. For a
-            single hang that expires after the plan ends, create a hang invite on
-            that plan’s page.
+            Circle-wide guest code — rotate anytime to invalidate old codes. For
+            one hang, create a 4-digit code on that Guest plan; guests enter it on
+            the same guest sign-in, and it expires when the hang ends.
           </p>
           <div className={ui.ctaRow}>
             <button

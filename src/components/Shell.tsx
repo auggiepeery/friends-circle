@@ -113,7 +113,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
       return "Name or password didn’t match.";
     }
     if (code === "invalid_invite") {
-      return "Need a valid guest invite code from someone in the circle.";
+      return "Need a valid guest invite or 4-digit hang code.";
+    }
+    if (code === "expired") {
+      return "That hang code expired when the event ended.";
+    }
+    if (code === "revoked") {
+      return "That hang code was revoked. Ask the host for a new one.";
     }
     if (code === "name_required") return "Enter a name (at least 2 characters).";
     if (code === "setup_unavailable") {
@@ -171,9 +177,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
       : pathname === href || pathname.startsWith(`${href}/`);
 
   const member = Boolean(me?.member);
-  /** Circle + hang invite deep links must render without a session. */
-  const publicInvitePath =
-    pathname.startsWith("/join/") || pathname.startsWith("/hang/");
+  /** Circle invite deep link can render without a session (code still entered on gate too). */
+  const publicInvitePath = pathname.startsWith("/join/");
   const showApp = member || publicInvitePath;
   const showGate = loaded && !member && !publicInvitePath;
 
@@ -217,8 +222,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <div>
               <strong>Who’s peeping?</strong>
               <p>
-                Friends sign in with their name and password. Guests need an
-                invite code. Auggie uses the setup secret.
+                Friends sign in with their name and password. Guests enter a
+                circle invite or a 4-digit hang code. Auggie uses the setup
+                secret.
               </p>
             </div>
             <label className={styles.gateLabel}>
@@ -252,9 +258,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 className={styles.gateInput}
                 value={inviteCode}
                 onChange={(e) => setInviteCode(e.target.value)}
-                placeholder="Guest invite code"
+                placeholder="Invite or 4-digit hang code"
                 required
                 maxLength={80}
+                inputMode="text"
                 autoComplete="off"
               />
             ) : (

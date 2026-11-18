@@ -158,21 +158,53 @@ export async function signInAsFriend(
   };
 }
 
-/** Guest join requires a valid invite code — no open public guest access. */
+/** Guest join: circle invite code, or a 4-digit hang code that expires at event end. */
 export async function signInAsGuest(
   name: string,
   inviteCode: string,
 ): Promise<
-  | { ok: true; userId: string; name: string; sessionVersion: number }
+  | {
+      ok: true;
+      userId: string;
+      name: string;
+      sessionVersion: number;
+      planId?: string;
+    }
   | { ok: false; error: string }
 > {
   const display = name.trim();
   if (display.length < 2) return { ok: false, error: "name_required" };
 
   await ensureDefaultCircle();
-  const expected = await getInviteCode();
   const provided = inviteCode.trim();
-  if (!expected || !provided || !secretsEqual(provided, expected)) {
+  if (!provided) return { ok: false, error: "invalid_invite" };
+
+  // 4-digit hang codes use the same guest sign-in field (no separate /hang URLs).
+  const { isFourDigitCode, redeemHangCode } = await import(
+    "./plan-guest-invites"
+  );
+  if (isFourDigitCode(provided)) {
+    const hang = await redeemHangCode(display, provided);
+    if (hang.ok) {
+      return {
+        ok: true,
+        userId: hang.userId,
+        name: hang.name,
+        sessionVersion: hang.sessionVersion,
+        planId: hang.planId,
+      };
+    }
+    if (hang.error === "expired" || hang.error === "revoked") {
+      return { ok: false, error: hang.error };
+    }
+    if (hang.error === "name_required") {
+      return { ok: false, error: "name_required" };
+    }
+    return { ok: false, error: "invalid_invite" };
+  }
+
+  const expected = await getInviteCode();
+  if (!expected || !secretsEqual(provided, expected)) {
     return { ok: false, error: "invalid_invite" };
   }
 

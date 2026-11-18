@@ -52,7 +52,7 @@ type Weather = {
 
 type HangInviteSummary = {
   id: string;
-  url: string;
+  code: string;
   status: string;
   expiresAt: string | null;
   createdAt: string;
@@ -299,7 +299,7 @@ export default function PlanDetailPage() {
       setError("Couldn’t switch this plan to Guest");
       return;
     }
-    setInviteMessage("Audience is now Guest — create a hang invite below.");
+    setInviteMessage("Audience is now Guest — create a 4-digit hang code below.");
     await load();
   }
 
@@ -319,10 +319,10 @@ export default function PlanDetailPage() {
         payload.error === "guest_audience_required"
           ? "Switch the plan to Guest audience first."
           : payload.error === "unscheduled"
-            ? "Add a start time before creating a hang invite."
+            ? "Add a start time before creating a hang code."
             : payload.error === "already_ended"
               ? "This hang already ended — update the time to invite guests."
-              : "Couldn’t create guest invite",
+              : "Couldn’t create hang code",
       );
       return;
     }
@@ -333,7 +333,7 @@ export default function PlanDetailPage() {
           inv.status === "active" ? { ...inv, status: "revoked" } : inv,
         ),
       ]);
-      setInviteMessage("Hang invite ready — copy and share.");
+      setInviteMessage("Hang code ready — guests enter it on the normal guest sign-in.");
     }
     await loadHangInvites(true);
   }
@@ -349,16 +349,16 @@ export default function PlanDetailPage() {
     });
     setInviteBusy(false);
     if (!res.ok) {
-      setError("Couldn’t revoke invite");
+      setError("Couldn’t revoke hang code");
       return;
     }
-    setInviteMessage("Guest hang invite revoked.");
+    setInviteMessage("Hang code revoked.");
     await loadHangInvites(true);
   }
 
-  function copyHangInvite(url: string) {
-    if (!url) return;
-    void navigator.clipboard.writeText(url);
+  function copyHangCode(code: string) {
+    if (!code) return;
+    void navigator.clipboard.writeText(code);
     setInviteCopied(true);
     setTimeout(() => setInviteCopied(false), 1600);
   }
@@ -492,15 +492,15 @@ export default function PlanDetailPage() {
 
       {canManageHangInvites ? (
         <section className={ui.panel}>
-          <h2 className={ui.panelTitle}>Guest hang invite</h2>
+          <h2 className={ui.panelTitle}>Guest hang code</h2>
           <p className={ui.muted} style={{ marginBottom: "0.85rem" }}>
-            Share a link so guests can join this hang until it ends (plus a short
-            grace). Circle-wide guest codes still live in Settings.
+            Create a 4-digit code guests enter on the normal guest sign-in. It
+            stops working when this hang ends — no special links.
           </p>
           {!isGuestAudience ? (
             <div className={ui.ctaRow}>
               <p className={ui.muted} style={{ margin: 0, flex: "1 1 12rem" }}>
-                Hang invites are for Guest-audience plans so guests only see guest
+                Hang codes are for Guest-audience plans so guests only see guest
                 hangs.
               </p>
               {isCreator ? (
@@ -521,9 +521,9 @@ export default function PlanDetailPage() {
                   <button
                     type="button"
                     className={`${ui.btn} ${ui.btnLamp}`}
-                    onClick={() => copyHangInvite(activeHangInvite.url)}
+                    onClick={() => copyHangCode(activeHangInvite.code)}
                   >
-                    {inviteCopied ? "Copied" : "Copy invite link"}
+                    {inviteCopied ? "Copied" : "Copy code"}
                   </button>
                 ) : (
                   <button
@@ -532,7 +532,7 @@ export default function PlanDetailPage() {
                     onClick={() => void createHangInvite()}
                     disabled={inviteBusy}
                   >
-                    {inviteBusy ? "Working…" : "Create invite link"}
+                    {inviteBusy ? "Working…" : "Create hang code"}
                   </button>
                 )}
                 {activeHangInvite ? (
@@ -552,12 +552,15 @@ export default function PlanDetailPage() {
                     onClick={() => void createHangInvite()}
                     disabled={inviteBusy}
                   >
-                    New link
+                    New code
                   </button>
                 ) : null}
               </div>
               {activeHangInvite || latestHangInvite ? (
                 <p className={ui.meta} style={{ marginTop: "0.85rem" }}>
+                  <span className={ui.chip}>
+                    {(activeHangInvite || latestHangInvite)!.code}
+                  </span>
                   <span className={ui.chip}>
                     {inviteStatusLabel(
                       (activeHangInvite || latestHangInvite)!.status,
@@ -572,8 +575,8 @@ export default function PlanDetailPage() {
                 </p>
               ) : (
                 <p className={ui.muted} style={{ marginTop: "0.85rem" }}>
-                  No hang invite yet. Guests join via the link until shortly after
-                  this plan ends.
+                  No hang code yet. Guests type the digits on the same guest
+                  login everyone else uses.
                 </p>
               )}
             </>
