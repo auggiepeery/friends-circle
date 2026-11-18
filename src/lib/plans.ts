@@ -187,6 +187,15 @@ export async function updatePlan(
   return rows[0] ?? null;
 }
 
+/** Hard-delete a plan; related RSVPs/comments/polls/expenses cascade. */
+export async function deletePlan(planId: string): Promise<boolean> {
+  const rows = await sql<{ id: string }>(
+    `delete from plans where id = $1 returning id`,
+    [planId],
+  );
+  return Boolean(rows[0]);
+}
+
 export async function listRsvps(planId: string): Promise<Rsvp[]> {
   return sql(
     `select r.*, p.display_name

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Manrope, Syne } from "next/font/google";
 import { Shell } from "@/components/Shell";
+import { PREFS_BOOT_SCRIPT } from "@/lib/prefs";
 import "./globals.css";
 
 const syne = Syne({
@@ -27,7 +28,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: PREFS_BOOT_SCRIPT }} />
+      </head>
       <body className={`${syne.variable} ${manrope.variable}`}>
         <div className="atmosphere" aria-hidden />
         <div className="orb orb--lagoon" aria-hidden />

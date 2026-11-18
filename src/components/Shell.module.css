@@ -12,7 +12,7 @@
   padding: 1rem 1.25rem;
   border-bottom: 1px solid var(--line);
   backdrop-filter: blur(10px);
-  background: rgba(7, 22, 28, 0.55);
+  background: var(--chrome);
   position: sticky;
   top: 0;
   z-index: 20;
@@ -193,7 +193,7 @@
     left: 0;
     right: 0;
     z-index: 30;
-    background: rgba(7, 22, 28, 0.92);
+    background: var(--chrome);
     border-top: 1px solid var(--line);
     backdrop-filter: blur(12px);
     padding: 0.45rem 0.35rem calc(0.45rem + env(safe-area-inset-bottom));

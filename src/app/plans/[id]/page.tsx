@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { formatMoney, formatWhen, fromLocalInputValue, toLocalInputValue } from "@/lib/format";
 import ui from "@/components/ui.module.css";
@@ -45,13 +45,17 @@ type Weather = {
 
 export default function PlanDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const id = params.id;
   const [data, setData] = useState<Detail | null>(null);
   const [meSub, setMeSub] = useState("");
+  const [meRole, setMeRole] = useState<string | null>(null);
   const [comment, setComment] = useState("");
   const [expenseDesc, setExpenseDesc] = useState("");
   const [expenseAmount, setExpenseAmount] = useState("");
   const [editing, setEditing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [title, setTitle] = useState("");
   const [place, setPlace] = useState("");
   const [startsAt, setStartsAt] = useState("");
@@ -71,6 +75,7 @@ export default function PlanDetailPage() {
     const meData = await meRes.json();
     setData(detail);
     setMeSub(meData.viewer?.sub || "");
+    setMeRole(meData.viewer?.role || null);
     setTitle(detail.plan.title);
     setPlace(detail.plan.place);
     setStartsAt(toLocalInputValue(detail.plan.starts_at));
@@ -154,10 +159,26 @@ export default function PlanDetailPage() {
     await load();
   }
 
-  if (error) return <p className={ui.error}>{error}</p>;
+  async function confirmAndDelete() {
+    setDeleting(true);
+    setError("");
+    const res = await fetch(`/api/plans/${id}`, { method: "DELETE" });
+    setDeleting(false);
+    if (!res.ok) {
+      setConfirmDelete(false);
+      setError("Couldn’t delete this plan");
+      return;
+    }
+    router.push("/");
+    router.refresh();
+  }
+
+  if (error && !data) return <p className={ui.error}>{error}</p>;
   if (!data) return <p className={ui.muted}>Loading plan…</p>;
 
   const mine = data.rsvps.find((r) => r.user_id === meSub)?.response;
+  const isCreator = data.plan.creator_id === meSub;
+  const canDelete = isCreator || meRole === "founder";
   const totalCents = data.expenses.reduce((s, e) => s + e.amount_cents, 0);
   const splitN = Math.max(1, data.rsvps.filter((r) => r.response === "going").length);
   const each = Math.round(totalCents / splitN);
@@ -181,15 +202,62 @@ export default function PlanDetailPage() {
             <span className={ui.chip}>Reminder {formatWhen(data.plan.reminder_at)}</span>
           ) : null}
         </div>
-        <div className={ui.ctaRow} style={{ marginTop: "1.25rem" }}>
-          <button
-            type="button"
-            className={`${ui.btn} ${ui.btnGhost}`}
-            onClick={() => setEditing((v) => !v)}
-          >
-            {editing ? "Close edit" : "Edit"}
-          </button>
-        </div>
+        {isCreator || canDelete ? (
+          <div className={ui.ctaRow} style={{ marginTop: "1.25rem" }}>
+            {isCreator ? (
+              <button
+                type="button"
+                className={`${ui.btn} ${ui.btnGhost}`}
+                onClick={() => {
+                  setEditing((v) => !v);
+                  setConfirmDelete(false);
+                }}
+              >
+                {editing ? "Close edit" : "Edit"}
+              </button>
+            ) : null}
+            {canDelete ? (
+              <button
+                type="button"
+                className={`${ui.btn} ${ui.btnDanger}`}
+                onClick={() => {
+                  setConfirmDelete(true);
+                  setEditing(false);
+                }}
+                disabled={deleting}
+              >
+                Delete
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        {confirmDelete ? (
+          <div className={ui.confirmDelete} role="alertdialog" aria-label="Confirm delete plan">
+            <p>
+              Delete “{data.plan.title}”? This removes the plan, RSVPs, chat, polls,
+              and expenses for everyone. This can’t be undone.
+            </p>
+            <div className={ui.ctaRow}>
+              <button
+                type="button"
+                className={`${ui.btn} ${ui.btnDanger}`}
+                onClick={confirmAndDelete}
+                disabled={deleting}
+              >
+                {deleting ? "Deleting…" : "Yes, delete"}
+              </button>
+              <button
+                type="button"
+                className={`${ui.btn} ${ui.btnGhost}`}
+                onClick={() => setConfirmDelete(false)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {error ? <p className={ui.error} style={{ marginTop: "0.75rem" }}>{error}</p> : null}
       </section>
 
       {editing ? (

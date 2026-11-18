@@ -57,7 +57,7 @@
 
 .btnPrimary {
   background: var(--lagoon);
-  color: #04201f;
+  color: var(--ink);
   animation: pulse-soft 2.8s ease-in-out infinite;
 }
 
@@ -73,6 +73,68 @@
 
 .btnGhost:hover {
   border-color: rgba(31, 166, 160, 0.45);
+}
+
+.btnDanger {
+  border: 1px solid rgba(217, 107, 92, 0.45);
+  background: rgba(217, 107, 92, 0.12);
+  color: var(--danger);
+}
+
+.btnDanger:hover {
+  border-color: var(--danger);
+  background: rgba(217, 107, 92, 0.2);
+}
+
+.confirmDelete {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(217, 107, 92, 0.35);
+  background: rgba(217, 107, 92, 0.08);
+}
+
+.confirmDelete p {
+  margin: 0 0 0.75rem;
+  color: var(--mist);
+  font-size: 0.95rem;
+}
+
+.segRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.85rem;
+}
+
+.segBtn {
+  padding: 0.55rem 0.95rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--mist-dim);
+  text-transform: capitalize;
+}
+
+.segBtn[data-active="true"] {
+  border-color: rgba(31, 166, 160, 0.55);
+  background: rgba(31, 166, 160, 0.16);
+  color: var(--mist);
+}
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0.55rem 0;
+  color: var(--mist);
+  cursor: pointer;
+}
+
+.toggleRow input {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--lagoon);
 }
 
 .btnLamp {

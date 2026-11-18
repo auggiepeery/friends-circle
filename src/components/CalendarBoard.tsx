@@ -15,6 +15,7 @@ import {
   weekDays,
 } from "@/lib/calendar";
 import { formatWhen } from "@/lib/format";
+import { isCalDefaultView, readPrefs } from "@/lib/prefs";
 import styles from "./Calendar.module.css";
 
 export type CalPlan = {
@@ -34,6 +35,11 @@ export function CalendarBoard() {
   const [anchor, setAnchor] = useState(() => new Date());
   const [plans, setPlans] = useState<CalPlan[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const preferred = readPrefs().calendarView;
+    if (isCalDefaultView(preferred)) setView(preferred);
+  }, []);
 
   const { from, to } = useMemo(() => rangeForView(view, anchor), [view, anchor]);
 
