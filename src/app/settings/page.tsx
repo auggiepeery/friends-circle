@@ -195,11 +195,13 @@ export default function SettingsPage() {
               key={id}
               type="button"
               className={ui.themeCard}
+              data-theme-id={id}
               data-active={prefs.theme === id}
               aria-checked={prefs.theme === id}
               role="radio"
               onClick={() => updatePref("theme", id as ThemeId)}
             >
+              <span className={ui.themeSwatch} aria-hidden />
               <strong>{label}</strong>
               <span>{blurb}</span>
             </button>

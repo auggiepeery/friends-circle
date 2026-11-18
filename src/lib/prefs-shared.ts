@@ -1,6 +1,6 @@
 /** Shared prefs types + normalization (safe for client and server). */
 
-export type ThemeId = "night" | "dusk" | "day" | "reef" | "citrus";
+export type ThemeId = "night" | "dusk" | "citrus";
 export type CalDefaultView = "month" | "week" | "list";
 
 export type ClientPrefs = {
@@ -11,12 +11,13 @@ export type ClientPrefs = {
 };
 
 export const THEME_OPTIONS: { id: ThemeId; label: string; blurb: string }[] = [
-  { id: "night", label: "Night lagoon", blurb: "Deep teal night" },
-  { id: "dusk", label: "Warm dusk", blurb: "Ember afterglow" },
-  { id: "day", label: "Day mist", blurb: "Soft daylight" },
-  { id: "reef", label: "Deep reef", blurb: "Navy abyss + seafoam" },
-  { id: "citrus", label: "Lamp citrus", blurb: "Charcoal + amber lamp" },
+  { id: "night", label: "Night lagoon", blurb: "Teal glass · deep water glow" },
+  { id: "dusk", label: "Warm dusk", blurb: "Ember sky · copper rails" },
+  { id: "citrus", label: "Lamp citrus", blurb: "Charcoal night · amber lamp" },
 ];
+
+/** Removed appearance themes — coerce to Night lagoon. */
+const REMOVED_THEMES = new Set(["day", "reef"]);
 
 export const DEFAULT_PREFS: ClientPrefs = {
   theme: "night",
@@ -26,13 +27,16 @@ export const DEFAULT_PREFS: ClientPrefs = {
 };
 
 export function isThemeId(value: unknown): value is ThemeId {
-  return (
-    value === "night" ||
-    value === "dusk" ||
-    value === "day" ||
-    value === "reef" ||
-    value === "citrus"
-  );
+  return value === "night" || value === "dusk" || value === "citrus";
+}
+
+export function coerceThemeId(value: unknown): ThemeId {
+  if (isThemeId(value)) return value;
+  // Day mist, Deep reef, and any unknown theme → Night lagoon
+  if (typeof value === "string" && REMOVED_THEMES.has(value)) {
+    return "night";
+  }
+  return DEFAULT_PREFS.theme;
 }
 
 export function isCalDefaultView(value: unknown): value is CalDefaultView {
@@ -43,7 +47,7 @@ export function normalizePrefs(raw: unknown): ClientPrefs {
   const parsed =
     raw && typeof raw === "object" ? (raw as Partial<ClientPrefs>) : {};
   return {
-    theme: isThemeId(parsed.theme) ? parsed.theme : DEFAULT_PREFS.theme,
+    theme: coerceThemeId(parsed.theme),
     calendarView: isCalDefaultView(parsed.calendarView)
       ? parsed.calendarView
       : DEFAULT_PREFS.calendarView,
@@ -56,4 +60,11 @@ export function normalizePrefs(raw: unknown): ClientPrefs {
         ? parsed.reduceMotion
         : DEFAULT_PREFS.reduceMotion,
   };
+}
+
+/** True when stored theme was removed and remapped to Night lagoon. */
+export function themeWasMigrated(raw: unknown): boolean {
+  if (!raw || typeof raw !== "object") return false;
+  const theme = (raw as Partial<ClientPrefs>).theme;
+  return typeof theme === "string" && !isThemeId(theme);
 }

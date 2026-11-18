@@ -8,15 +8,18 @@ export type {
 export {
   DEFAULT_PREFS,
   THEME_OPTIONS,
+  coerceThemeId,
   isCalDefaultView,
   isThemeId,
   normalizePrefs,
+  themeWasMigrated,
 } from "./prefs-shared";
 
 import {
   type ClientPrefs,
   DEFAULT_PREFS,
   normalizePrefs,
+  themeWasMigrated,
 } from "./prefs-shared";
 
 export const PREFS_EVENT = "fp-prefs-change";
@@ -144,19 +147,25 @@ export async function hydratePrefsForUser(
         empty?: boolean;
       };
       let prefs = normalizePrefs(data.prefs);
+      let shouldPersist = themeWasMigrated(data.prefs);
 
       if (data.empty && typeof window !== "undefined") {
         const legacyRaw = window.localStorage.getItem(PREFS_LEGACY_KEY);
         if (legacyRaw) {
-          prefs = normalizePrefs(JSON.parse(legacyRaw));
-          await fetch("/api/prefs", {
-            method: "PUT",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ prefs }),
-            credentials: "same-origin",
-          }).catch(() => undefined);
+          const legacyParsed = JSON.parse(legacyRaw);
+          prefs = normalizePrefs(legacyParsed);
+          shouldPersist = true;
           window.localStorage.removeItem(PREFS_LEGACY_KEY);
         }
+      }
+
+      if (shouldPersist) {
+        await fetch("/api/prefs", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ prefs }),
+          credentials: "same-origin",
+        }).catch(() => undefined);
       }
 
       writeCache(userId, prefs);
@@ -178,4 +187,4 @@ export async function hydratePrefsForUser(
 /** Inline boot script — first paint from last profile cache (not shared truth). */
 export const PREFS_BOOT_SCRIPT = `(function(){try{var k=${JSON.stringify(
   PREFS_CACHE_KEY,
-)};var legacy=${JSON.stringify(PREFS_LEGACY_KEY)};var r=localStorage.getItem(k);if(!r){r=localStorage.getItem(legacy);if(r)r=JSON.stringify({prefs:JSON.parse(r)});}var t="night";var m=false;if(r){var c=JSON.parse(r);var p=c&&c.prefs?c.prefs:c;if(p&&(p.theme==="night"||p.theme==="dusk"||p.theme==="day"||p.theme==="reef"||p.theme==="citrus"))t=p.theme;if(p&&p.reduceMotion===true)m=true;}var d=document.documentElement;d.dataset.theme=t;d.dataset.reduceMotion=m?"true":"false";}catch(e){}})();`;
+)};var legacy=${JSON.stringify(PREFS_LEGACY_KEY)};var r=localStorage.getItem(k);if(!r){r=localStorage.getItem(legacy);if(r)r=JSON.stringify({prefs:JSON.parse(r)});}var t="night";var m=false;if(r){var c=JSON.parse(r);var p=c&&c.prefs?c.prefs:c;if(p&&(p.theme==="night"||p.theme==="dusk"||p.theme==="citrus"))t=p.theme;else if(p&&(p.theme==="day"||p.theme==="reef"))t="night";if(p&&p.reduceMotion===true)m=true;}var d=document.documentElement;d.dataset.theme=t;d.dataset.reduceMotion=m?"true":"false";}catch(e){}})();`;
