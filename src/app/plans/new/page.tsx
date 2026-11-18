@@ -1,29 +1,33 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { PLAN_TEMPLATES } from "@/lib/templates";
 import {
   combineLocalDateAndTime,
   formatDayChip,
   localDateKey,
 } from "@/lib/format";
+import {
+  formatRecurringRule,
+  nextDateKeyForWeekday,
+  type RecurFreq,
+} from "@/lib/recurrence";
 import ui from "@/components/ui.module.css";
 
 type Audience = "fun_peeps" | "guest";
+type ScheduleMode = "dates" | "weekly";
 
 const MAX_DAYS = 14;
-
-function upcomingDayKeys(count: number): string[] {
-  const keys: string[] = [];
-  const cursor = new Date();
-  cursor.setHours(12, 0, 0, 0);
-  for (let i = 0; i < count; i++) {
-    keys.push(localDateKey(cursor));
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return keys;
-}
+const WEEKDAY_LABELS = [
+  { d: 0, label: "Sun" },
+  { d: 1, label: "Mon" },
+  { d: 2, label: "Tue" },
+  { d: 3, label: "Wed" },
+  { d: 4, label: "Thu" },
+  { d: 5, label: "Fri" },
+  { d: 6, label: "Sat" },
+];
 
 export default function NewPlanPage() {
   const router = useRouter();
@@ -31,12 +35,15 @@ export default function NewPlanPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [place, setPlace] = useState("");
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("dates");
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
   const [extraDate, setExtraDate] = useState("");
+  const [weekdays, setWeekdays] = useState<number[]>([]);
+  const [weeklyStart, setWeeklyStart] = useState(() => localDateKey(new Date()));
+  const [recurFreq, setRecurFreq] = useState<RecurFreq | "">("weekly");
   const [startTime, setStartTime] = useState("18:00");
   const [endTime, setEndTime] = useState("20:00");
   const [outdoor, setOutdoor] = useState(false);
-  const [recurringRule, setRecurringRule] = useState("");
   const [pollQuestion, setPollQuestion] = useState("");
   const [pollOptions, setPollOptions] = useState("Fri 7pm\nSat 6pm\nSun afternoon");
   const [pollKind, setPollKind] = useState("time");
@@ -44,8 +51,6 @@ export default function NewPlanPage() {
   const [isGuest, setIsGuest] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-
-  const dayChoices = useMemo(() => upcomingDayKeys(14), []);
 
   useEffect(() => {
     fetch("/api/me")
@@ -68,18 +73,82 @@ export default function NewPlanPage() {
     setOutdoor(t.outdoor);
   }
 
-  function toggleDay(key: string) {
+  function addExtraDate() {
+    if (!extraDate) return;
     setSelectedDays((prev) => {
-      if (prev.includes(key)) return prev.filter((d) => d !== key);
+      if (prev.includes(extraDate)) return prev;
       if (prev.length >= MAX_DAYS) return prev;
-      return [...prev, key].sort();
+      return [...prev, extraDate].sort();
+    });
+    setExtraDate("");
+  }
+
+  function removeDay(key: string) {
+    setSelectedDays((prev) => prev.filter((d) => d !== key));
+  }
+
+  function toggleWeekday(d: number) {
+    setWeekdays((prev) => {
+      if (prev.includes(d)) return prev.filter((x) => x !== d);
+      return [...prev, d].sort((a, b) => a - b);
     });
   }
 
-  function addExtraDate() {
-    if (!extraDate) return;
-    toggleDay(extraDate);
-    setExtraDate("");
+  function buildSlots():
+    | { slots: { startsAt: string; endsAt: string | null }[]; recurringRule: string }
+    | { error: string } {
+    if (!startTime) return { error: "Add a start time." };
+
+    if (scheduleMode === "weekly") {
+      if (weekdays.length === 0) {
+        return { error: "Pick at least one weekday." };
+      }
+      if (!recurFreq) {
+        return { error: "Choose how often it repeats." };
+      }
+      const from = weeklyStart
+        ? new Date(`${weeklyStart}T12:00:00`)
+        : new Date();
+      if (Number.isNaN(from.getTime())) {
+        return { error: "Couldn’t read the start date." };
+      }
+      // One series plan per weekday so each has a clean anchor + rule.
+      const slots: { startsAt: string; endsAt: string | null }[] = [];
+      for (const wd of weekdays) {
+        const day = nextDateKeyForWeekday(wd, from);
+        const startsAt = combineLocalDateAndTime(day, startTime);
+        if (!startsAt) return { error: "Couldn’t read one of the days or times." };
+        let endsAt: string | null = null;
+        if (endTime) {
+          endsAt = combineLocalDateAndTime(day, endTime);
+          if (endsAt && new Date(endsAt).getTime() <= new Date(startsAt).getTime()) {
+            return { error: "End time needs to be after start time." };
+          }
+        }
+        slots.push({ startsAt, endsAt });
+      }
+      // Same rule on each series (weekday encoded; expansion uses each plan’s weekday).
+      const recurringRule = formatRecurringRule(recurFreq, weekdays);
+      return { slots, recurringRule };
+    }
+
+    if (selectedDays.length === 0) {
+      return { error: "Add at least one date." };
+    }
+    const slots: { startsAt: string; endsAt: string | null }[] = [];
+    for (const day of selectedDays) {
+      const startsAt = combineLocalDateAndTime(day, startTime);
+      if (!startsAt) return { error: "Couldn’t read one of the days or times." };
+      let endsAt: string | null = null;
+      if (endTime) {
+        endsAt = combineLocalDateAndTime(day, endTime);
+        if (endsAt && new Date(endsAt).getTime() <= new Date(startsAt).getTime()) {
+          return { error: "End time needs to be after start time." };
+        }
+      }
+      slots.push({ startsAt, endsAt });
+    }
+    return { slots, recurringRule: "" };
   }
 
   async function submit(e: React.FormEvent) {
@@ -87,36 +156,24 @@ export default function NewPlanPage() {
     setSaving(true);
     setError("");
 
-    if (selectedDays.length === 0) {
+    const built = buildSlots();
+    if ("error" in built) {
       setSaving(false);
-      setError("Pick at least one day.");
-      return;
-    }
-    if (!startTime) {
-      setSaving(false);
-      setError("Add a start time.");
+      setError(built.error);
       return;
     }
 
-    const slots: { startsAt: string; endsAt: string | null }[] = [];
-    for (const day of selectedDays) {
-      const startsAt = combineLocalDateAndTime(day, startTime);
-      if (!startsAt) {
-        setSaving(false);
-        setError("Couldn’t read one of the days or times.");
-        return;
-      }
-      let endsAt: string | null = null;
-      if (endTime) {
-        endsAt = combineLocalDateAndTime(day, endTime);
-        if (endsAt && new Date(endsAt).getTime() <= new Date(startsAt).getTime()) {
-          setSaving(false);
-          setError("End time needs to be after start time.");
-          return;
-        }
-      }
-      slots.push({ startsAt, endsAt });
-    }
+    // Weekly multi-weekday: each slot gets a rule scoped to that weekday only.
+    const payloads =
+      scheduleMode === "weekly"
+        ? built.slots.map((slot, i) => ({
+            slots: [slot],
+            recurringRule: formatRecurringRule(
+              (recurFreq || "weekly") as RecurFreq,
+              [weekdays[i]],
+            ),
+          }))
+        : [{ slots: built.slots, recurringRule: built.recurringRule }];
 
     const options = pollQuestion
       ? pollOptions
@@ -124,35 +181,47 @@ export default function NewPlanPage() {
           .map((s) => s.trim())
           .filter(Boolean)
       : undefined;
-    const res = await fetch("/api/plans", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        title,
-        description,
-        place,
-        template,
-        outdoor,
-        slots,
-        recurringRule,
-        pollQuestion: pollQuestion || undefined,
-        pollOptions: options,
-        pollKind,
-        audience: isGuest ? "guest" : audience,
-        lat: outdoor ? 40.76 : null,
-        lon: outdoor ? -111.89 : null,
-      }),
-    });
-    const data = await res.json();
-    setSaving(false);
-    if (!res.ok) {
-      setError(data.error || "Couldn’t create plan");
-      return;
+
+    let primaryId: string | null = null;
+    let total = 0;
+    for (let i = 0; i < payloads.length; i++) {
+      const res = await fetch("/api/plans", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title,
+          description,
+          place,
+          template,
+          outdoor,
+          slots: payloads[i].slots,
+          recurringRule: payloads[i].recurringRule,
+          pollQuestion: i === 0 ? pollQuestion || undefined : undefined,
+          pollOptions: i === 0 ? options : undefined,
+          pollKind,
+          audience: isGuest ? "guest" : audience,
+          lat: outdoor ? 40.76 : null,
+          lon: outdoor ? -111.89 : null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSaving(false);
+        setError(data.error || "Couldn’t create plan");
+        return;
+      }
+      if (!primaryId) primaryId = data.plan.id;
+      total += data.count || payloads[i].slots.length;
     }
-    router.push(`/plans/${data.plan.id}`);
+
+    setSaving(false);
+    if (primaryId) router.push(`/plans/${primaryId}`);
   }
 
   const sortedSelected = [...selectedDays].sort();
+  const weekdayNames = weekdays
+    .map((d) => WEEKDAY_LABELS.find((w) => w.d === d)?.label)
+    .filter(Boolean);
 
   return (
     <>
@@ -161,8 +230,8 @@ export default function NewPlanPage() {
           Add to the calendar
         </h1>
         <p className={ui.lede}>
-          Pick one or more days, set start and end times, and choose Guest or Fun
-          Peeps. Optional poll if timing is still fuzzy.
+          One-off dates or a weekly rhythm — keep start and end times, pick Guest
+          or Fun Peeps. Optional poll if timing is still fuzzy.
         </p>
       </section>
 
@@ -251,58 +320,131 @@ export default function NewPlanPage() {
         </label>
 
         <div className={ui.panel} style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
-          <h2 className={ui.panelTitle}>Days</h2>
-          <p className={ui.muted} style={{ marginBottom: "0.75rem" }}>
-            Tap every day this hang should show up
-            {recurringRule ? " (first dates for the repeat)" : ""}. Same start
-            and end times apply to each.
-          </p>
-          <div className={ui.dayGrid} role="group" aria-label="Pick days">
-            {dayChoices.map((key) => (
-              <button
-                key={key}
-                type="button"
-                className={ui.dayChip}
-                data-active={selectedDays.includes(key)}
-                aria-pressed={selectedDays.includes(key)}
-                onClick={() => toggleDay(key)}
-              >
-                {formatDayChip(key)}
-              </button>
-            ))}
-          </div>
-          <div className={ui.dayAddRow}>
-            <label className={ui.label} style={{ flex: 1, margin: 0 }}>
-              Another date
-              <input
-                className={ui.input}
-                type="date"
-                value={extraDate}
-                onChange={(e) => setExtraDate(e.target.value)}
-              />
-            </label>
+          <h2 className={ui.panelTitle}>When</h2>
+          <div className={ui.segRow} role="radiogroup" aria-label="Schedule type">
             <button
               type="button"
-              className={`${ui.btn} ${ui.btnGhost}`}
-              onClick={addExtraDate}
-              disabled={!extraDate}
-              style={{ alignSelf: "end" }}
+              className={ui.segBtn}
+              data-active={scheduleMode === "dates"}
+              aria-checked={scheduleMode === "dates"}
+              role="radio"
+              onClick={() => setScheduleMode("dates")}
             >
-              Add day
+              Specific dates
+            </button>
+            <button
+              type="button"
+              className={ui.segBtn}
+              data-active={scheduleMode === "weekly"}
+              aria-checked={scheduleMode === "weekly"}
+              role="radio"
+              onClick={() => setScheduleMode("weekly")}
+            >
+              Weekly repeat
             </button>
           </div>
-          {sortedSelected.length > 0 ? (
-            <p className={ui.meta} style={{ marginTop: "0.75rem" }}>
-              {sortedSelected.length === 1
-                ? `1 day · ${formatDayChip(sortedSelected[0])}`
-                : `${sortedSelected.length} days · ${sortedSelected
-                    .map(formatDayChip)
-                    .join(" · ")}`}
-            </p>
+
+          {scheduleMode === "dates" ? (
+            <>
+              <p className={ui.muted} style={{ marginBottom: "0.75rem" }}>
+                Add each date this hang should show up. Same start and end times
+                apply to each.
+              </p>
+              <div className={ui.dayAddStack}>
+                <label className={ui.label}>
+                  Date
+                  <input
+                    className={ui.input}
+                    type="date"
+                    value={extraDate}
+                    onChange={(e) => setExtraDate(e.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className={`${ui.btn} ${ui.btnGhost} ${ui.dayAddBtn}`}
+                  onClick={addExtraDate}
+                  disabled={!extraDate}
+                >
+                  Add day
+                </button>
+              </div>
+              {sortedSelected.length > 0 ? (
+                <div className={ui.dayGrid} role="list" aria-label="Selected dates">
+                  {sortedSelected.map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      className={ui.dayChip}
+                      data-active="true"
+                      onClick={() => removeDay(key)}
+                      aria-label={`Remove ${formatDayChip(key)}`}
+                      title="Tap to remove"
+                    >
+                      {formatDayChip(key)} ×
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className={ui.muted} style={{ marginTop: "0.75rem" }}>
+                  No dates yet — pick one above and tap Add day.
+                </p>
+              )}
+            </>
           ) : (
-            <p className={ui.muted} style={{ marginTop: "0.75rem" }}>
-              No days selected yet.
-            </p>
+            <>
+              <p className={ui.muted} style={{ marginBottom: "0.75rem" }}>
+                Pick weekdays and how often — e.g. every Tuesday. Times below
+                apply to each occurrence.
+              </p>
+              <div className={ui.dayGrid} role="group" aria-label="Weekdays">
+                {WEEKDAY_LABELS.map((w) => (
+                  <button
+                    key={w.d}
+                    type="button"
+                    className={ui.dayChip}
+                    data-active={weekdays.includes(w.d)}
+                    aria-pressed={weekdays.includes(w.d)}
+                    onClick={() => toggleWeekday(w.d)}
+                  >
+                    {w.label}
+                  </button>
+                ))}
+              </div>
+              <div className={ui.timeRow}>
+                <label className={ui.label}>
+                  Starts on
+                  <input
+                    className={ui.input}
+                    type="date"
+                    value={weeklyStart}
+                    onChange={(e) => setWeeklyStart(e.target.value)}
+                  />
+                </label>
+                <label className={ui.label}>
+                  Repeats
+                  <select
+                    className={ui.select}
+                    value={recurFreq}
+                    onChange={(e) => setRecurFreq(e.target.value as RecurFreq | "")}
+                  >
+                    <option value="weekly">Every week</option>
+                    <option value="biweekly">Every other week</option>
+                  </select>
+                </label>
+              </div>
+              {weekdays.length > 0 ? (
+                <p className={ui.meta} style={{ marginTop: "0.75rem" }}>
+                  {recurFreq === "biweekly" ? "Every other " : "Every "}
+                  {weekdayNames.join(" · ")}
+                  {weeklyStart ? ` · from ${formatDayChip(weeklyStart)}` : ""}
+                </p>
+              ) : (
+                <p className={ui.muted} style={{ marginTop: "0.75rem" }}>
+                  No weekdays selected yet.
+                </p>
+              )}
+            </>
           )}
         </div>
 
@@ -327,26 +469,6 @@ export default function NewPlanPage() {
             />
           </label>
         </div>
-
-        <label className={ui.label}>
-          Repeats
-          <select
-            className={ui.select}
-            value={recurringRule}
-            onChange={(e) => setRecurringRule(e.target.value)}
-          >
-            <option value="">Doesn’t repeat</option>
-            <option value="weekly">Every week</option>
-            <option value="biweekly">Every other week</option>
-            <option value="monthly">Every month</option>
-          </select>
-        </label>
-        {recurringRule ? (
-          <p className={ui.muted}>
-            Each selected day becomes its own calendar entry and then repeats
-            from there.
-          </p>
-        ) : null}
 
         <label className={ui.label} style={{ flexDirection: "row", alignItems: "center" }}>
           <input
@@ -397,9 +519,13 @@ export default function NewPlanPage() {
         >
           {saving
             ? "Saving…"
-            : selectedDays.length > 1
-              ? `Add ${selectedDays.length} days to calendar`
-              : "Add to calendar"}
+            : scheduleMode === "weekly"
+              ? weekdays.length > 1
+                ? `Add ${weekdays.length} weekly plans`
+                : "Add weekly plan"
+              : selectedDays.length > 1
+                ? `Add ${selectedDays.length} days to calendar`
+                : "Add to calendar"}
         </button>
       </form>
     </>
