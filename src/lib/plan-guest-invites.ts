@@ -95,6 +95,64 @@ export async function getInviteByCode(
   return rows[0] ?? null;
 }
 
+export async function getInviteById(
+  inviteId: string,
+): Promise<PlanGuestInvite | null> {
+  const rows = await sql<PlanGuestInvite>(
+    `select id, token, plan_id, created_by, created_at, revoked_at
+     from plan_guest_invites
+     where id = $1
+     limit 1`,
+    [inviteId],
+  );
+  return rows[0] ?? null;
+}
+
+/** Bump session_version for guests admitted via a hang invite (or all for a plan). */
+export async function invalidateHangGuestSessions(input: {
+  inviteId?: string;
+  planId?: string;
+}): Promise<void> {
+  if (input.inviteId) {
+    await sql(
+      `update profiles p
+       set session_version = session_version + 1
+       from hang_guest_bindings b
+       where b.user_id = p.id and b.invite_id = $1`,
+      [input.inviteId],
+    );
+    return;
+  }
+  if (input.planId) {
+    await sql(
+      `update profiles p
+       set session_version = session_version + 1
+       from hang_guest_bindings b
+       where b.user_id = p.id and b.plan_id = $1`,
+      [input.planId],
+    );
+  }
+}
+
+/**
+ * Hang-code guests stay valid only while their invite is active.
+ * Circle-wide guests (no hang binding) are unaffected.
+ */
+export async function hangGuestAccessStillValid(
+  userId: string,
+): Promise<boolean> {
+  if (!userId.startsWith("guest:")) return true;
+  const rows = await sql<{ invite_id: string; plan_id: string }>(
+    `select invite_id, plan_id from hang_guest_bindings where user_id = $1`,
+    [userId],
+  );
+  const binding = rows[0];
+  if (!binding) return true;
+  const invite = await getInviteById(binding.invite_id);
+  const plan = await getPlan(binding.plan_id);
+  return inviteLifecycle(invite, plan) === "active";
+}
+
 async function codeInUse(code: string): Promise<boolean> {
   const rows = await sql<{ id: string }>(
     `select id from plan_guest_invites
@@ -137,6 +195,8 @@ export async function createPlanGuestInvite(input: {
      where plan_id = $1 and revoked_at is null`,
     [input.planId],
   );
+  // Rotating the hang code must kick guests who redeemed the previous one.
+  await invalidateHangGuestSessions({ planId: input.planId });
 
   const code = await allocateFourDigitCode();
   if (!code) return { ok: false, error: "code_unavailable" };
@@ -168,6 +228,7 @@ export async function revokePlanGuestInvite(input: {
       [input.inviteId, input.planId],
     );
     if (!rows[0]) return { ok: false, error: "not_found" };
+    await invalidateHangGuestSessions({ inviteId: input.inviteId });
     return { ok: true };
   }
   await sql(
@@ -176,6 +237,7 @@ export async function revokePlanGuestInvite(input: {
      where plan_id = $1 and revoked_at is null`,
     [input.planId],
   );
+  await invalidateHangGuestSessions({ planId: input.planId });
   return { ok: true };
 }
 
@@ -224,6 +286,14 @@ export async function redeemHangCode(
      values ($1, $2, 'guest')
      on conflict (circle_id, user_id) do update set role = 'guest'`,
     [DEFAULT_CIRCLE_ID, userId],
+  );
+  await sql(
+    `insert into hang_guest_bindings (user_id, invite_id, plan_id)
+     values ($1, $2, $3)
+     on conflict (user_id) do update set
+       invite_id = excluded.invite_id,
+       plan_id = excluded.plan_id`,
+    [userId, invite.id, plan.id],
   );
   await setRsvp(plan.id, userId, "going");
   return {

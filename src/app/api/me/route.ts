@@ -2,6 +2,10 @@ import { noStore, optionalViewer, requireViewer } from "@/lib/auth";
 import { requireSameOrigin } from "@/lib/csrf";
 import { setAvailability } from "@/lib/friends";
 import {
+  clearGuestCookieHeader,
+  readGuestSession,
+} from "@/lib/guest";
+import {
   isCircleMember,
   memberRole,
   requireCircleMember,
@@ -18,7 +22,11 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const viewer = await optionalViewer(request);
   if (!viewer) {
-    return Response.json({ viewer: null }, { headers: noStore });
+    const headers: Record<string, string> = { ...noStore };
+    if (readGuestSession(request)) {
+      headers["set-cookie"] = clearGuestCookieHeader();
+    }
+    return Response.json({ viewer: null }, { headers });
   }
   const profile = await getProfile(viewer.sub);
   const member = await isCircleMember(viewer.sub);

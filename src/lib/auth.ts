@@ -3,6 +3,7 @@ import { sql } from "./db";
 import { getProfile } from "./plans";
 import { readGuestSession } from "./guest";
 import { getSessionVersion } from "./group";
+import { hangGuestAccessStillValid } from "./plan-guest-invites";
 
 export type Viewer = {
   sub: string;
@@ -26,6 +27,10 @@ export async function optionalViewer(request: Request): Promise<Viewer | null> {
     const currentVersion = await getSessionVersion(session.sessionId);
     if (currentVersion !== session.sessionVersion) {
       // Password change (or other bump) revoked this cookie.
+      return null;
+    }
+    // Hang-code guests: revoke/expiry must fail auth on the next request.
+    if (!(await hangGuestAccessStillValid(session.sessionId))) {
       return null;
     }
     const profile = await getProfile(session.sessionId);
