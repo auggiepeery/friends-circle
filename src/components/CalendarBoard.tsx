@@ -31,21 +31,80 @@ export type CalPlan = {
   occurrence_key?: string;
 };
 
+type BusyBlock = {
+  kind: "routine" | "plan";
+  label: string;
+  time_label: string;
+  plan_id?: string;
+};
+
+type MemberAvail = {
+  user_id: string;
+  display_name: string;
+  role: string;
+  status: "free" | "busy" | "unknown";
+  blocks: BusyBlock[];
+  has_routines: boolean;
+};
+
+type DayAvailPayload = {
+  day: string;
+  members: MemberAvail[];
+  free_count: number;
+  busy_count: number;
+  unknown_count: number;
+  viewer?: {
+    role: string | null;
+    has_routines: boolean;
+    needs_routines: boolean;
+  };
+};
+
 function planKey(e: CalPlan): string {
   return e.occurrence_key ? `${e.id}::${e.occurrence_key}` : e.id;
 }
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+function formatDayHeading(key: string): string {
+  const [y, m, d] = key.split("-").map(Number);
+  if (!y || !m || !d) return key;
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 export function CalendarBoard() {
   const [view, setView] = useState<CalView>("month");
   const [anchor, setAnchor] = useState(() => new Date());
   const [plans, setPlans] = useState<CalPlan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [avail, setAvail] = useState<DayAvailPayload | null>(null);
+  const [availLoading, setAvailLoading] = useState(false);
+  const [needsRoutines, setNeedsRoutines] = useState(false);
 
   useEffect(() => {
     const preferred = readPrefs().calendarView;
     if (isCalDefaultView(preferred)) setView(preferred);
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/me")
+      .then((r) => r.json())
+      .then((data) => {
+        if (!alive) return;
+        setNeedsRoutines(Boolean(data.viewer?.needs_routines));
+      })
+      .catch(() => {
+        if (alive) setNeedsRoutines(false);
+      });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const { from, to } = useMemo(() => rangeForView(view, anchor), [view, anchor]);
@@ -69,6 +128,37 @@ export function CalendarBoard() {
       alive = false;
     };
   }, [from, to]);
+
+  useEffect(() => {
+    if (!selectedDay) {
+      setAvail(null);
+      return;
+    }
+    let alive = true;
+    setAvailLoading(true);
+    fetch(`/api/availability?day=${encodeURIComponent(selectedDay)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!alive) return;
+        if (data.error) {
+          setAvail(null);
+          return;
+        }
+        setAvail(data as DayAvailPayload);
+        if (data.viewer?.needs_routines != null) {
+          setNeedsRoutines(Boolean(data.viewer.needs_routines));
+        }
+      })
+      .catch(() => {
+        if (alive) setAvail(null);
+      })
+      .finally(() => {
+        if (alive) setAvailLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [selectedDay]);
 
   const byDay = useMemo(() => {
     const map = new Map<string, CalPlan[]>();
@@ -100,13 +190,38 @@ export function CalendarBoard() {
     }
   }
 
+  function selectDay(day: Date) {
+    const key = dayKey(day);
+    setSelectedDay((prev) => (prev === key ? null : key));
+  }
+
+  const freeMembers = avail?.members.filter((m) => m.status === "free") || [];
+  const busyMembers = avail?.members.filter((m) => m.status === "busy") || [];
+  const unknownMembers =
+    avail?.members.filter((m) => m.status === "unknown") || [];
+
   return (
     <section className={`${styles.hero} rise`}>
       <h1 className={styles.brand}>Fun Peepers</h1>
       <p className={`${styles.lede} rise rise-delay-1`}>
         Invite-only shared calendar — everyone in the circle sees every plan.
-        RSVP, chat, and poll right on the hang.
+        Tap a day to see who&apos;s free before you plan over people.
       </p>
+
+      {needsRoutines ? (
+        <div className={`${styles.routinePrompt} rise rise-delay-1`} role="status">
+          <div>
+            <strong>Set your daily routines</strong>
+            <p>
+              Sports, church, school — weekday + time so Who&apos;s free stays
+              honest. Fun Peeps need at least one.
+            </p>
+          </div>
+          <Link href="/settings#routines" className={styles.routineCta}>
+            Add routines
+          </Link>
+        </div>
+      ) : null}
 
       <div className={`${styles.chrome} rise rise-delay-2`}>
         <div className={styles.chromePeriod}>
@@ -161,6 +276,138 @@ export function CalendarBoard() {
         </div>
       </div>
 
+      {selectedDay ? (
+        <div
+          className={`${styles.whosFree} rise`}
+          aria-live="polite"
+          aria-label={`Who's free on ${formatDayHeading(selectedDay)}`}
+        >
+          <div className={styles.whosFreeHead}>
+            <div>
+              <div className={styles.whosFreeEyebrow}>Who&apos;s free</div>
+              <h2 className={styles.whosFreeTitle}>
+                {formatDayHeading(selectedDay)}
+              </h2>
+            </div>
+            <button
+              type="button"
+              className={styles.whosFreeClose}
+              onClick={() => setSelectedDay(null)}
+              aria-label="Close who's free"
+            >
+              Close
+            </button>
+          </div>
+
+          {availLoading ? (
+            <p className={styles.empty} style={{ padding: "0.5rem 0 0" }}>
+              Checking the circle…
+            </p>
+          ) : null}
+
+          {!availLoading && avail ? (
+            <>
+              <div className={styles.whosFreeSummary}>
+                <span data-tone="free">{avail.free_count} free</span>
+                <span data-tone="busy">{avail.busy_count} busy</span>
+                {avail.unknown_count > 0 ? (
+                  <span data-tone="unknown">
+                    {avail.unknown_count} no schedule yet
+                  </span>
+                ) : null}
+              </div>
+
+              {freeMembers.length === 0 &&
+              busyMembers.length === 0 &&
+              unknownMembers.length === 0 ? (
+                <p className={styles.empty} style={{ padding: "0.75rem 0 0" }}>
+                  No Fun Peeps in the circle yet.
+                </p>
+              ) : null}
+
+              {freeMembers.length > 0 ? (
+                <div className={styles.whosFreeGroup}>
+                  <h3>Free</h3>
+                  <ul className={styles.whosFreeList}>
+                    {freeMembers.map((m) => (
+                      <li key={m.user_id} className={styles.whosFreeRow} data-status="free">
+                        <div className={styles.whosFreeName}>
+                          {m.display_name}
+                          {m.role === "guest" ? (
+                            <span className={styles.whosFreeRole}>Guest</span>
+                          ) : null}
+                        </div>
+                        <span className={styles.whosFreeStatus}>Open day</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p className={styles.empty} style={{ padding: "0.65rem 0 0" }}>
+                  Nobody looks fully free — check busy blocks below.
+                </p>
+              )}
+
+              {busyMembers.length > 0 ? (
+                <div className={styles.whosFreeGroup}>
+                  <h3>Busy</h3>
+                  <ul className={styles.whosFreeList}>
+                    {busyMembers.map((m) => (
+                      <li key={m.user_id} className={styles.whosFreeRow} data-status="busy">
+                        <div className={styles.whosFreeName}>
+                          {m.display_name}
+                          {m.role === "guest" ? (
+                            <span className={styles.whosFreeRole}>Guest</span>
+                          ) : null}
+                        </div>
+                        <ul className={styles.busyBlocks}>
+                          {m.blocks.map((b, i) => (
+                            <li key={`${b.kind}-${b.label}-${i}`}>
+                              <span className={styles.busyKind}>
+                                {b.kind === "routine" ? "Routine" : "Plan"}
+                              </span>
+                              <span>
+                                {b.time_label} · {b.label}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {unknownMembers.length > 0 ? (
+                <div className={styles.whosFreeGroup}>
+                  <h3>No schedule yet</h3>
+                  <ul className={styles.whosFreeList}>
+                    {unknownMembers.map((m) => (
+                      <li
+                        key={m.user_id}
+                        className={styles.whosFreeRow}
+                        data-status="unknown"
+                      >
+                        <div className={styles.whosFreeName}>{m.display_name}</div>
+                        <span className={styles.whosFreeStatus}>
+                          Hasn&apos;t set routines
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+
+          {!availLoading && !avail ? (
+            <p className={styles.empty} style={{ padding: "0.5rem 0 0" }}>
+              Couldn&apos;t load who&apos;s free for this day.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       {loading ? <p className={styles.empty}>Loading calendar…</p> : null}
 
       {!loading && view === "month" ? (
@@ -175,16 +422,33 @@ export function CalendarBoard() {
               const key = dayKey(day);
               const events = byDay.get(key) || [];
               const inMonth = day.getMonth() === anchor.getMonth();
+              const selected = selectedDay === key;
               return (
                 <div
                   key={key}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={selected}
+                  aria-label={`${formatDayHeading(key)}${events.length ? `, ${events.length} plans` : ""} — who's free`}
                   className={`${styles.cell} ${inMonth ? "" : styles.cellMuted} ${
                     sameDay(day, today) ? styles.cellToday : ""
-                  }`}
+                  } ${selected ? styles.cellSelected : ""}`}
+                  onClick={() => selectDay(day)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      selectDay(day);
+                    }
+                  }}
                 >
                   <span className={styles.dayNum}>{day.getDate()}</span>
                   {events.slice(0, 3).map((e) => (
-                    <Link key={planKey(e)} href={`/plans/${e.id}`} className={styles.event}>
+                    <Link
+                      key={planKey(e)}
+                      href={`/plans/${e.id}`}
+                      className={styles.event}
+                      onClick={(ev) => ev.stopPropagation()}
+                    >
                       {e.audience === "guest" ? "G · " : ""}
                       {e.title}
                     </Link>
@@ -203,33 +467,87 @@ export function CalendarBoard() {
               .map((day) => {
                 const key = dayKey(day);
                 const events = byDay.get(key) || [];
-                if (events.length === 0 && !sameDay(day, today)) return null;
+                const isToday = sameDay(day, today);
+                const isPast = dayKey(day) < dayKey(today);
+                // Keep agenda light: plans, today, selected, and upcoming empty days.
+                if (
+                  events.length === 0 &&
+                  !isToday &&
+                  selectedDay !== key &&
+                  isPast
+                ) {
+                  return null;
+                }
+                if (events.length === 0 && !isToday && selectedDay !== key) {
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`${styles.agendaDay} ${styles.agendaDayEmpty}`}
+                      onClick={() => selectDay(day)}
+                    >
+                      <div className={styles.agendaDate}>
+                        {day.getDate()}
+                        <span className={styles.agendaDow}>{DOW[day.getDay()]}</span>
+                      </div>
+                      <div className={styles.agendaEvents}>
+                        <span className={styles.agendaWhosFree}>Who&apos;s free?</span>
+                      </div>
+                    </button>
+                  );
+                }
                 return (
-                  <div key={key} className={styles.agendaDay}>
-                    <div className={styles.agendaDate}>
-                      {day.getDate()}
-                      <span className={styles.agendaDow}>{DOW[day.getDay()]}</span>
-                    </div>
+                  <div
+                    key={key}
+                    className={`${styles.agendaDay} ${
+                      selectedDay === key ? styles.agendaDaySelected : ""
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      className={styles.agendaDateBtn}
+                      onClick={() => selectDay(day)}
+                      aria-pressed={selectedDay === key}
+                      aria-label={`Who's free on ${formatDayHeading(key)}`}
+                    >
+                      <span className={styles.agendaDate}>
+                        {day.getDate()}
+                        <span className={styles.agendaDow}>{DOW[day.getDay()]}</span>
+                      </span>
+                    </button>
                     <div className={styles.agendaEvents}>
                       {events.length === 0 ? (
-                        <p className={styles.empty} style={{ padding: 0 }}>
-                          Today — nothing yet
-                        </p>
+                        <button
+                          type="button"
+                          className={styles.agendaWhosFree}
+                          onClick={() => selectDay(day)}
+                        >
+                          {isToday ? "Today — tap for who's free" : "Who's free?"}
+                        </button>
                       ) : (
-                        events.map((e) => (
-                          <Link
-                            key={planKey(e)}
-                            href={`/plans/${e.id}`}
-                            className={styles.agendaEvent}
+                        <>
+                          {events.map((e) => (
+                            <Link
+                              key={planKey(e)}
+                              href={`/plans/${e.id}`}
+                              className={styles.agendaEvent}
+                            >
+                              <strong>{e.title}</strong>
+                              <div className={styles.weekMeta}>
+                                {e.audience === "guest" ? "Guest · " : "Fun Peeps · "}
+                                {formatWhenRange(e.starts_at, e.ends_at)}
+                                {e.place ? ` · ${e.place}` : ""}
+                              </div>
+                            </Link>
+                          ))}
+                          <button
+                            type="button"
+                            className={styles.agendaWhosFree}
+                            onClick={() => selectDay(day)}
                           >
-                            <strong>{e.title}</strong>
-                            <div className={styles.weekMeta}>
-                              {e.audience === "guest" ? "Guest · " : "Fun Peeps · "}
-                              {formatWhenRange(e.starts_at, e.ends_at)}
-                              {e.place ? ` · ${e.place}` : ""}
-                            </div>
-                          </Link>
-                        ))
+                            Who&apos;s free?
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -244,14 +562,30 @@ export function CalendarBoard() {
           {weekDays(anchor).map((day) => {
             const key = dayKey(day);
             const events = byDay.get(key) || [];
+            const selected = selectedDay === key;
             return (
-              <div key={key} className={styles.weekCol}>
-                <div className={styles.weekDow}>{DOW[day.getDay()]}</div>
-                <div className={styles.weekDate}>{day.getDate()}</div>
+              <div
+                key={key}
+                className={`${styles.weekCol} ${selected ? styles.weekColSelected : ""}`}
+              >
+                <button
+                  type="button"
+                  className={styles.weekHeadBtn}
+                  onClick={() => selectDay(day)}
+                  aria-pressed={selected}
+                  aria-label={`Who's free on ${formatDayHeading(key)}`}
+                >
+                  <div className={styles.weekDow}>{DOW[day.getDay()]}</div>
+                  <div className={styles.weekDate}>{day.getDate()}</div>
+                </button>
                 {events.length === 0 ? (
-                  <p className={styles.empty} style={{ padding: 0 }}>
-                    —
-                  </p>
+                  <button
+                    type="button"
+                    className={styles.agendaWhosFree}
+                    onClick={() => selectDay(day)}
+                  >
+                    Who&apos;s free?
+                  </button>
                 ) : (
                   events.map((e) => (
                     <Link key={planKey(e)} href={`/plans/${e.id}`} className={styles.weekEvent}>
@@ -293,6 +627,9 @@ export function CalendarBoard() {
               </Link>
             ))
           )}
+          <p className={styles.empty} style={{ paddingTop: "0.75rem" }}>
+            Switch to month or week and tap a day for Who&apos;s free.
+          </p>
         </div>
       ) : null}
     </section>

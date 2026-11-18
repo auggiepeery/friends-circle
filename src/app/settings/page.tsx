@@ -12,6 +12,21 @@ import {
   patchPrefs,
   readPrefs,
 } from "@/lib/prefs";
+import {
+  formatMinuteRange,
+  parseTimeToMinute,
+  type DailyRoutine,
+} from "@/lib/routines-shared";
+
+const WEEKDAY_LABELS = [
+  { d: 0, label: "Sun" },
+  { d: 1, label: "Mon" },
+  { d: 2, label: "Tue" },
+  { d: 3, label: "Wed" },
+  { d: 4, label: "Thu" },
+  { d: 5, label: "Fri" },
+  { d: 6, label: "Sat" },
+];
 
 export default function SettingsPage() {
   const [prefs, setPrefs] = useState<ClientPrefs>(DEFAULT_PREFS);
@@ -23,6 +38,11 @@ export default function SettingsPage() {
   const [inviteCode, setInviteCode] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [routines, setRoutines] = useState<DailyRoutine[]>([]);
+  const [routineWeekday, setRoutineWeekday] = useState(1);
+  const [routineStart, setRoutineStart] = useState("09:00");
+  const [routineEnd, setRoutineEnd] = useState("10:00");
+  const [routineLabel, setRoutineLabel] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -48,12 +68,17 @@ export default function SettingsPage() {
         if (!r.ok) return null;
         return r.json();
       }),
+      fetch("/api/routines").then(async (r) => {
+        if (!r.ok) return { routines: [] };
+        return r.json();
+      }),
     ])
-      .then(([me, circle]) => {
+      .then(([me, circle, routinesData]) => {
         if (!alive) return;
         setDisplayName(me.viewer?.name || "");
         setHint(me.viewer?.availability_hint || "");
         setRole(me.viewer?.role || null);
+        setRoutines(routinesData.routines || []);
         if (circle) {
           setCanManage(Boolean(circle.canManage));
           setInviteUrl(circle.inviteUrl || "");
@@ -71,6 +96,14 @@ export default function SettingsPage() {
       alive = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!loaded) return;
+    if (typeof window === "undefined") return;
+    if (window.location.hash !== "#routines") return;
+    const el = document.getElementById("routines");
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [loaded]);
 
   function updatePref<K extends keyof ClientPrefs>(key: K, value: ClientPrefs[K]) {
     setPrefs(patchPrefs({ [key]: value }));
@@ -138,6 +171,67 @@ export default function SettingsPage() {
     setNewPassword("");
   }
 
+  async function addRoutine(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setMessage("");
+    setError("");
+    const start_minute = parseTimeToMinute(routineStart);
+    const end_minute = parseTimeToMinute(routineEnd);
+    if (start_minute === null || end_minute === null) {
+      setBusy(false);
+      setError("Use valid start and end times.");
+      return;
+    }
+    const res = await fetch("/api/routines", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        weekday: routineWeekday,
+        start_minute,
+        end_minute,
+        label: routineLabel,
+      }),
+    });
+    const data = await res.json();
+    setBusy(false);
+    if (!res.ok) {
+      setError(
+        data.error === "end_before_start"
+          ? "End time must be after start."
+          : data.error === "label_required"
+            ? "Add a label (sports, church, school…)."
+            : data.error === "routine_limit"
+              ? "Routine limit reached — remove one first."
+              : "Couldn’t add routine",
+      );
+      return;
+    }
+    setRoutines((prev) =>
+      [...prev, data.routine as DailyRoutine].sort(
+        (a, b) => a.weekday - b.weekday || a.start_minute - b.start_minute,
+      ),
+    );
+    setRoutineLabel("");
+    setMessage("Routine saved — it blocks Who’s free on that weekday.");
+  }
+
+  async function removeRoutine(id: string) {
+    setBusy(true);
+    setMessage("");
+    setError("");
+    const res = await fetch(`/api/routines?id=${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+    setBusy(false);
+    if (!res.ok) {
+      setError("Couldn’t remove routine");
+      return;
+    }
+    setRoutines((prev) => prev.filter((r) => r.id !== id));
+    setMessage("Routine removed.");
+  }
+
   function copyInvite() {
     if (!inviteUrl) return;
     void navigator.clipboard.writeText(inviteUrl);
@@ -168,6 +262,8 @@ export default function SettingsPage() {
   if (!loaded) return <p className={ui.muted}>Loading settings…</p>;
 
   const isFriend = role === "friend";
+  const isFunPeep = role === "friend" || role === "founder";
+  const needsRoutines = isFunPeep && routines.length === 0;
 
   return (
     <>
@@ -317,6 +413,117 @@ export default function SettingsPage() {
             style={{ justifySelf: "start" }}
           >
             {busy ? "Saving…" : "Save profile"}
+          </button>
+        </form>
+      </section>
+
+      <section className={ui.section} id="routines">
+        <h2 className={ui.sectionTitle}>Daily routines</h2>
+        <p className={ui.muted} style={{ marginBottom: "0.85rem" }}>
+          {isFunPeep
+            ? "Recurring busy blocks (sports, church, school) feed Who’s free on the calendar. Fun Peeps need at least one."
+            : "Optional for guests — add a recurring block if you want the circle to see when you’re busy."}
+        </p>
+        {needsRoutines ? (
+          <p className={ui.meta} style={{ marginBottom: "0.85rem" }}>
+            Add your first routine so friends don’t plan over you.
+          </p>
+        ) : null}
+
+        {routines.length === 0 ? (
+          <p className={ui.empty} style={{ paddingTop: 0 }}>
+            {isFunPeep
+              ? "No routines yet — pick a weekday, time range, and label."
+              : "No routines yet. Guests can skip this."}
+          </p>
+        ) : (
+          <ul className={ui.list} style={{ marginBottom: "1rem" }}>
+            {routines.map((r) => {
+              const day =
+                WEEKDAY_LABELS.find((w) => w.d === r.weekday)?.label || "?";
+              return (
+                <li key={r.id} className={ui.planRow}>
+                  <div>
+                    <strong>
+                      {day} · {r.label}
+                    </strong>
+                    <div className={ui.muted}>
+                      {formatMinuteRange(r.start_minute, r.end_minute)}
+                      <span className={ui.chip} style={{ marginLeft: "0.45rem" }}>
+                        Busy
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className={`${ui.btn} ${ui.btnGhost}`}
+                    disabled={busy}
+                    onClick={() => void removeRoutine(r.id)}
+                    aria-label={`Remove ${r.label}`}
+                  >
+                    Remove
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <form className={ui.form} onSubmit={addRoutine}>
+          <div className={ui.dayGrid} role="group" aria-label="Weekday">
+            {WEEKDAY_LABELS.map((w) => (
+              <button
+                key={w.d}
+                type="button"
+                className={ui.dayChip}
+                data-active={routineWeekday === w.d}
+                aria-pressed={routineWeekday === w.d}
+                onClick={() => setRoutineWeekday(w.d)}
+              >
+                {w.label}
+              </button>
+            ))}
+          </div>
+          <div className={ui.timeRow}>
+            <label className={ui.label}>
+              Starts
+              <input
+                className={ui.input}
+                type="time"
+                value={routineStart}
+                onChange={(e) => setRoutineStart(e.target.value || "09:00")}
+                required
+              />
+            </label>
+            <label className={ui.label}>
+              Ends
+              <input
+                className={ui.input}
+                type="time"
+                value={routineEnd}
+                onChange={(e) => setRoutineEnd(e.target.value || "10:00")}
+                required
+              />
+            </label>
+          </div>
+          <label className={ui.label}>
+            Label
+            <input
+              className={ui.input}
+              value={routineLabel}
+              onChange={(e) => setRoutineLabel(e.target.value)}
+              maxLength={80}
+              required
+              placeholder="Soccer · Church · Math lab"
+            />
+          </label>
+          <button
+            type="submit"
+            className={`${ui.btn} ${ui.btnLamp}`}
+            disabled={busy}
+            style={{ justifySelf: "start" }}
+          >
+            {busy ? "Saving…" : "Add routine"}
           </button>
         </form>
       </section>

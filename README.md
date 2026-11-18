@@ -2,6 +2,8 @@
 
 Shared calendar for a small group of friends. Everyone in the circle sees every plan — no “send to friends” step. RSVP, chat, and polls live on each plan (including polls added after the plan is created).
 
+**Who’s free** — tap a calendar day to see who’s free vs busy (routines + plans). **Daily routines** — Fun Peeps set recurring weekday busy blocks (sports, church, school) in Settings; they feed Who’s free. Guests can add routines optionally.
+
 ## Stack
 
 - Next.js App Router + TypeScript + CSS Modules
