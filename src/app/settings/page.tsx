@@ -68,9 +68,12 @@ export default function SettingsPage() {
         if (!r.ok) return null;
         return r.json();
       }),
-      fetch("/api/routines").then(async (r) => {
-        if (!r.ok) return { routines: [] };
-        return r.json();
+      fetch("/api/routines", { credentials: "same-origin" }).then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          return { routines: [], loadError: data.error || "routines_failed" };
+        }
+        return data;
       }),
     ])
       .then(([me, circle, routinesData]) => {
@@ -79,6 +82,9 @@ export default function SettingsPage() {
         setHint(me.viewer?.availability_hint || "");
         setRole(me.viewer?.role || null);
         setRoutines(routinesData.routines || []);
+        if (routinesData.loadError) {
+          setError("Couldn’t load daily routines — try refresh.");
+        }
         if (circle) {
           setCanManage(Boolean(circle.canManage));
           setInviteUrl(circle.inviteUrl || "");
@@ -186,6 +192,7 @@ export default function SettingsPage() {
     const res = await fetch("/api/routines", {
       method: "POST",
       headers: { "content-type": "application/json" },
+      credentials: "same-origin",
       body: JSON.stringify({
         weekday: routineWeekday,
         start_minute,
@@ -193,7 +200,7 @@ export default function SettingsPage() {
         label: routineLabel,
       }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
       setError(
@@ -203,8 +210,14 @@ export default function SettingsPage() {
             ? "Add a label (sports, church, school…)."
             : data.error === "routine_limit"
               ? "Routine limit reached — remove one first."
-              : "Couldn’t add routine",
+              : data.error === "csrf_origin"
+                ? "Couldn’t save — refresh and try again."
+                : "Couldn’t add routine",
       );
+      return;
+    }
+    if (!data.routine) {
+      setError("Couldn’t add routine");
       return;
     }
     setRoutines((prev) =>
@@ -214,6 +227,13 @@ export default function SettingsPage() {
     );
     setRoutineLabel("");
     setMessage("Routine saved — it blocks Who’s free on that weekday.");
+    // Re-fetch so list matches Postgres (survives any optimistic merge issues).
+    void fetch("/api/routines", { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((fresh) => {
+        if (fresh?.routines) setRoutines(fresh.routines);
+      })
+      .catch(() => undefined);
   }
 
   async function removeRoutine(id: string) {
@@ -222,10 +242,16 @@ export default function SettingsPage() {
     setError("");
     const res = await fetch(`/api/routines?id=${encodeURIComponent(id)}`, {
       method: "DELETE",
+      credentials: "same-origin",
     });
     setBusy(false);
     if (!res.ok) {
-      setError("Couldn’t remove routine");
+      const data = await res.json().catch(() => ({}));
+      setError(
+        data.error === "csrf_origin"
+          ? "Couldn’t remove — refresh and try again."
+          : "Couldn’t remove routine",
+      );
       return;
     }
     setRoutines((prev) => prev.filter((r) => r.id !== id));

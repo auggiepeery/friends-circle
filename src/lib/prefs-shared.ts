@@ -14,6 +14,8 @@ export type ClientPrefs = {
   calendarView: CalDefaultView;
   showUnreadBadge: boolean;
   reduceMotion: boolean;
+  /** Fun Peeps dismissed the “set daily routines” calendar prompt. */
+  routinesPromptDismissed: boolean;
 };
 
 export const THEME_OPTIONS: { id: ThemeId; label: string; blurb: string }[] = [
@@ -33,6 +35,7 @@ export const DEFAULT_PREFS: ClientPrefs = {
   calendarView: "month",
   showUnreadBadge: true,
   reduceMotion: false,
+  routinesPromptDismissed: false,
 };
 
 const LIVE_THEMES = new Set<ThemeId>([
@@ -77,6 +80,10 @@ export function normalizePrefs(raw: unknown): ClientPrefs {
       typeof parsed.reduceMotion === "boolean"
         ? parsed.reduceMotion
         : DEFAULT_PREFS.reduceMotion,
+    routinesPromptDismissed:
+      typeof parsed.routinesPromptDismissed === "boolean"
+        ? parsed.routinesPromptDismissed
+        : DEFAULT_PREFS.routinesPromptDismissed,
   };
 }
 

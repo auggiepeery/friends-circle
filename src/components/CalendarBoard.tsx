@@ -15,7 +15,12 @@ import {
   weekDays,
 } from "@/lib/calendar";
 import { formatWhenRange } from "@/lib/format";
-import { isCalDefaultView, readPrefs } from "@/lib/prefs";
+import {
+  PREFS_EVENT,
+  isCalDefaultView,
+  patchPrefs,
+  readPrefs,
+} from "@/lib/prefs";
 import styles from "./Calendar.module.css";
 
 export type CalPlan = {
@@ -85,15 +90,27 @@ export function CalendarBoard() {
   const [avail, setAvail] = useState<DayAvailPayload | null>(null);
   const [availLoading, setAvailLoading] = useState(false);
   const [needsRoutines, setNeedsRoutines] = useState(false);
+  const [promptDismissed, setPromptDismissed] = useState(false);
+  const [calError, setCalError] = useState("");
 
   useEffect(() => {
-    const preferred = readPrefs().calendarView;
-    if (isCalDefaultView(preferred)) setView(preferred);
+    const sync = () => {
+      const prefs = readPrefs();
+      if (isCalDefaultView(prefs.calendarView)) setView(prefs.calendarView);
+      setPromptDismissed(Boolean(prefs.routinesPromptDismissed));
+    };
+    sync();
+    window.addEventListener(PREFS_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(PREFS_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
   }, []);
 
   useEffect(() => {
     let alive = true;
-    fetch("/api/me")
+    fetch("/api/me", { credentials: "same-origin" })
       .then((r) => r.json())
       .then((data) => {
         if (!alive) return;
@@ -112,14 +129,31 @@ export function CalendarBoard() {
   useEffect(() => {
     let alive = true;
     setLoading(true);
+    setCalError("");
     const q = new URLSearchParams({
       from: from.toISOString(),
       to: to.toISOString(),
     });
-    fetch(`/api/calendar?${q}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (alive) setPlans(data.plans || []);
+    fetch(`/api/calendar?${q}`, { credentials: "same-origin" })
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (!alive) return;
+        if (!r.ok) {
+          setPlans([]);
+          setCalError(
+            data.error === "sign_in_required"
+              ? "Sign in again to load plans."
+              : "Couldn’t load calendar plans.",
+          );
+          return;
+        }
+        setPlans(Array.isArray(data.plans) ? data.plans : []);
+      })
+      .catch(() => {
+        if (alive) {
+          setPlans([]);
+          setCalError("Couldn’t load calendar plans.");
+        }
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -136,11 +170,13 @@ export function CalendarBoard() {
     }
     let alive = true;
     setAvailLoading(true);
-    fetch(`/api/availability?day=${encodeURIComponent(selectedDay)}`)
-      .then((r) => r.json())
-      .then((data) => {
+    fetch(`/api/availability?day=${encodeURIComponent(selectedDay)}`, {
+      credentials: "same-origin",
+    })
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
         if (!alive) return;
-        if (data.error) {
+        if (!r.ok || data.error) {
           setAvail(null);
           return;
         }
@@ -159,6 +195,13 @@ export function CalendarBoard() {
       alive = false;
     };
   }, [selectedDay]);
+
+  function dismissRoutinesPrompt() {
+    setPromptDismissed(true);
+    patchPrefs({ routinesPromptDismissed: true });
+  }
+
+  const showRoutinesPrompt = needsRoutines && !promptDismissed;
 
   const byDay = useMemo(() => {
     const map = new Map<string, CalPlan[]>();
@@ -217,18 +260,35 @@ export function CalendarBoard() {
         Tap a day to see who&apos;s free before you plan over people.
       </p>
 
-      {needsRoutines ? (
+      {showRoutinesPrompt ? (
         <div className={`${styles.routinePrompt} rise rise-delay-1`} role="status">
-          <div>
+          <div className={styles.routinePromptBody}>
             <strong>Set your daily routines</strong>
             <p>
               Sports, church, school — weekday + time so Who&apos;s free stays
               honest. Fun Peeps need at least one.
             </p>
+            <div className={styles.routinePromptActions}>
+              <Link href="/settings#routines" className={styles.routineCta}>
+                Add routines
+              </Link>
+              <button
+                type="button"
+                className={styles.routineDismiss}
+                onClick={dismissRoutinesPrompt}
+              >
+                Not now
+              </button>
+            </div>
           </div>
-          <Link href="/settings#routines" className={styles.routineCta}>
-            Add routines
-          </Link>
+          <button
+            type="button"
+            className={styles.routineDismissX}
+            onClick={dismissRoutinesPrompt}
+            aria-label="Dismiss routines prompt"
+          >
+            ×
+          </button>
         </div>
       ) : null}
 
@@ -292,132 +352,86 @@ export function CalendarBoard() {
           aria-label={`Who's free on ${formatDayHeading(selectedDay)}`}
         >
           <div className={styles.whosFreeHead}>
-            <div>
-              <div className={styles.whosFreeEyebrow}>Who&apos;s free</div>
-              <h2 className={styles.whosFreeTitle}>
-                {formatDayHeading(selectedDay)}
-              </h2>
-            </div>
+            <h2 className={styles.whosFreeTitle}>
+              Who&apos;s free · {formatDayHeading(selectedDay)}
+            </h2>
             <button
               type="button"
               className={styles.whosFreeClose}
               onClick={() => setSelectedDay(null)}
               aria-label="Close who's free"
             >
-              Close
+              ×
             </button>
           </div>
 
           {availLoading ? (
-            <p className={styles.empty} style={{ padding: "0.5rem 0 0" }}>
-              Checking the circle…
-            </p>
+            <p className={styles.whosFreeHint}>Checking…</p>
           ) : null}
 
           {!availLoading && avail ? (
-            <>
+            <div className={styles.whosFreeBody}>
               <div className={styles.whosFreeSummary}>
                 <span data-tone="free">{avail.free_count} free</span>
                 <span data-tone="busy">{avail.busy_count} busy</span>
                 {avail.unknown_count > 0 ? (
-                  <span data-tone="unknown">
-                    {avail.unknown_count} no schedule yet
-                  </span>
+                  <span data-tone="unknown">{avail.unknown_count} unset</span>
                 ) : null}
               </div>
 
               {freeMembers.length === 0 &&
               busyMembers.length === 0 &&
               unknownMembers.length === 0 ? (
-                <p className={styles.empty} style={{ padding: "0.75rem 0 0" }}>
-                  No Fun Peeps in the circle yet.
-                </p>
+                <p className={styles.whosFreeHint}>No Fun Peeps yet.</p>
               ) : null}
 
               {freeMembers.length > 0 ? (
-                <div className={styles.whosFreeGroup}>
-                  <h3>Free</h3>
-                  <ul className={styles.whosFreeList}>
-                    {freeMembers.map((m) => (
-                      <li key={m.user_id} className={styles.whosFreeRow} data-status="free">
-                        <div className={styles.whosFreeName}>
-                          {m.display_name}
-                          {m.role === "guest" ? (
-                            <span className={styles.whosFreeRole}>Guest</span>
-                          ) : null}
-                        </div>
-                        <span className={styles.whosFreeStatus}>Open day</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : (
-                <p className={styles.empty} style={{ padding: "0.65rem 0 0" }}>
-                  Nobody looks fully free — check busy blocks below.
-                </p>
-              )}
+                <ul className={styles.whosFreeList}>
+                  {freeMembers.map((m) => (
+                    <li key={m.user_id} className={styles.whosFreeRow} data-status="free">
+                      <span className={styles.whosFreeName}>{m.display_name}</span>
+                      <span className={styles.whosFreeStatus}>Free</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
 
               {busyMembers.length > 0 ? (
-                <div className={styles.whosFreeGroup}>
-                  <h3>Busy</h3>
-                  <ul className={styles.whosFreeList}>
-                    {busyMembers.map((m) => (
-                      <li key={m.user_id} className={styles.whosFreeRow} data-status="busy">
-                        <div className={styles.whosFreeName}>
-                          {m.display_name}
-                          {m.role === "guest" ? (
-                            <span className={styles.whosFreeRole}>Guest</span>
-                          ) : null}
-                        </div>
-                        <ul className={styles.busyBlocks}>
-                          {m.blocks.map((b, i) => (
-                            <li key={`${b.kind}-${b.label}-${i}`}>
-                              <span className={styles.busyKind}>
-                                {b.kind === "routine" ? "Routine" : "Plan"}
-                              </span>
-                              <span>
-                                {b.time_label} · {b.label}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                <ul className={styles.whosFreeList}>
+                  {busyMembers.map((m) => (
+                    <li key={m.user_id} className={styles.whosFreeRow} data-status="busy">
+                      <div className={styles.whosFreeBusyTop}>
+                        <span className={styles.whosFreeName}>{m.display_name}</span>
+                        <span className={styles.whosFreeStatus}>Busy</span>
+                      </div>
+                      <p className={styles.busyLine}>
+                        {m.blocks
+                          .slice(0, 2)
+                          .map((b) => `${b.time_label} ${b.label}`)
+                          .join(" · ")}
+                        {m.blocks.length > 2 ? ` · +${m.blocks.length - 2}` : ""}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
               ) : null}
 
               {unknownMembers.length > 0 ? (
-                <div className={styles.whosFreeGroup}>
-                  <h3>No schedule yet</h3>
-                  <ul className={styles.whosFreeList}>
-                    {unknownMembers.map((m) => (
-                      <li
-                        key={m.user_id}
-                        className={styles.whosFreeRow}
-                        data-status="unknown"
-                      >
-                        <div className={styles.whosFreeName}>{m.display_name}</div>
-                        <span className={styles.whosFreeStatus}>
-                          Hasn&apos;t set routines
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                <p className={styles.whosFreeHint}>
+                  Unset: {unknownMembers.map((m) => m.display_name).join(", ")}
+                </p>
               ) : null}
-            </>
+            </div>
           ) : null}
 
           {!availLoading && !avail ? (
-            <p className={styles.empty} style={{ padding: "0.5rem 0 0" }}>
-              Couldn&apos;t load who&apos;s free for this day.
-            </p>
+            <p className={styles.whosFreeHint}>Couldn&apos;t load who&apos;s free.</p>
           ) : null}
         </div>
       ) : null}
 
       {loading ? <p className={styles.empty}>Loading calendar…</p> : null}
+      {!loading && calError ? <p className={styles.empty}>{calError}</p> : null}
 
       {!loading && view === "month" ? (
         <>
