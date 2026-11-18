@@ -16,9 +16,9 @@ const manrope = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "Fun Peepers — plans with friends",
+  title: "Fun Peepers — shared calendar for friends",
   description:
-    "Create hangouts, RSVP, poll times and places, chat on plans, and see what’s this weekend.",
+    "A small-group shared calendar: add plans everyone can see, RSVP, chat, and poll.",
 };
 
 export default function RootLayout({

@@ -74,10 +74,11 @@ export default function NewPlanPage() {
     <>
       <section className={`${ui.hero} rise`}>
         <h1 className={ui.headline} style={{ fontSize: "clamp(2rem, 6vw, 3rem)" }}>
-          New plan
+          Add to the calendar
         </h1>
         <p className={ui.lede}>
-          Start from a template or scratch. Add a poll if the when/where is still fuzzy.
+          Plans land on the shared circle calendar — everyone sees them. Optional
+          poll if the when/where is still fuzzy.
         </p>
       </section>
 
@@ -210,7 +211,7 @@ export default function NewPlanPage() {
           className={`${ui.btn} ${ui.btnPrimary}`}
           disabled={saving}
         >
-          {saving ? "Creating…" : "Create plan"}
+          {saving ? "Saving…" : "Add to calendar"}
         </button>
       </form>
     </>

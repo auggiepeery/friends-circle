@@ -1,6 +1,6 @@
 import { planForViewer } from "@/lib/access";
 import { noStore, requireViewer } from "@/lib/auth";
-import { listFriends } from "@/lib/friends";
+import { listCircleMembers } from "@/lib/group";
 import {
   MAX_PLACE,
   MAX_POLL_OPTIONS,
@@ -85,20 +85,20 @@ export async function POST(request: Request) {
     }
   }
 
-  const friends = await listFriends(viewer.sub);
-  for (const f of friends.slice(0, 100)) {
-    const friendId = f.user_id === viewer.sub ? f.friend_id : f.user_id;
+  const members = await listCircleMembers();
+  for (const m of members.slice(0, 40)) {
+    if (m.user_id === viewer.sub) continue;
     await notify({
-      userId: friendId,
+      userId: m.user_id,
       kind: "plan",
-      title: `New plan: ${plan.title}`,
-      body: `${viewer.name} started a plan`,
+      title: `On the calendar: ${plan.title}`,
+      body: `${viewer.name} added a plan`,
       href: `/plans/${plan.id}`,
     });
   }
 
   return Response.json(
-    { plan: planForViewer(plan, viewer.sub) },
+    { plan: planForViewer(plan) },
     { status: 201, headers: noStore },
   );
 }

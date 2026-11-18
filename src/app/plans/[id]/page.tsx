@@ -14,7 +14,6 @@ type Detail = {
     starts_at: string | null;
     reminder_at: string | null;
     outdoor: boolean;
-    share_token?: string;
     recurring_rule: string;
     creator_id: string;
     lat: number | null;
@@ -57,7 +56,6 @@ export default function PlanDetailPage() {
   const [place, setPlace] = useState("");
   const [startsAt, setStartsAt] = useState("");
   const [weather, setWeather] = useState<Weather | null>(null);
-  const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -156,14 +154,6 @@ export default function PlanDetailPage() {
     await load();
   }
 
-  function copyShare() {
-    if (!data?.plan.share_token) return;
-    const url = `${window.location.origin}/share/${data.plan.share_token}`;
-    void navigator.clipboard.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
-  }
-
   if (error) return <p className={ui.error}>{error}</p>;
   if (!data) return <p className={ui.muted}>Loading plan…</p>;
 
@@ -176,7 +166,9 @@ export default function PlanDetailPage() {
     <>
       <section className={`${ui.hero} rise`}>
         <p className={ui.muted}>
-          {data.plan.recurring_rule ? `Recurring · ${data.plan.recurring_rule}` : "Plan"}
+          {data.plan.recurring_rule
+            ? `Shared calendar · ${data.plan.recurring_rule}`
+            : "On the shared calendar"}
         </p>
         <h1 className={ui.headline} style={{ fontSize: "clamp(2rem, 6vw, 3.2rem)" }}>
           {data.plan.title}
@@ -190,11 +182,6 @@ export default function PlanDetailPage() {
           ) : null}
         </div>
         <div className={ui.ctaRow} style={{ marginTop: "1.25rem" }}>
-          {data.plan.share_token ? (
-            <button type="button" className={`${ui.btn} ${ui.btnLamp}`} onClick={copyShare}>
-              {copied ? "Link copied" : "Copy share link"}
-            </button>
-          ) : null}
           <button
             type="button"
             className={`${ui.btn} ${ui.btnGhost}`}

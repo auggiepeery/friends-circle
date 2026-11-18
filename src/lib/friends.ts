@@ -86,7 +86,7 @@ export async function inviteFriend(
     kind: "invite",
     title: "Friend invite",
     body: "Someone wants to plan with you on Fun Peepers.",
-    href: "/friends",
+    href: "/circle",
   });
 
   return {
@@ -119,7 +119,7 @@ export async function respondInvite(
       kind: "invite",
       title: "Invite accepted",
       body: "You’re friends on Fun Peepers — time to plan.",
-      href: "/friends",
+      href: "/circle",
     });
   } else {
     await sql(`delete from friendships where id = $1`, [friendshipId]);
