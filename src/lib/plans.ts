@@ -2,6 +2,7 @@ import { audienceFilterSql, normalizeAudience, type PlanAudience } from "./audie
 import { sql } from "./db";
 import { DEFAULT_CIRCLE_ID } from "./group";
 import { id, shareToken } from "./ids";
+import { expandRecurringOccurrences, parseRecurringRule } from "./recurrence";
 import type {
   Comment,
   Expense,
@@ -16,6 +17,8 @@ export type PlanListRow = Omit<Plan, "share_token"> & {
   my_rsvp: string | null;
   going_count: number;
   creator_name?: string;
+  /** Stable key when the same recurring plan appears on multiple days. */
+  occurrence_key?: string;
 };
 
 const PLAN_SELECT = `p.id, p.creator_id, p.circle_id, p.audience, p.title, p.description, p.place,
@@ -27,7 +30,14 @@ const PLAN_SELECT = `p.id, p.creator_id, p.circle_id, p.audience, p.title, p.des
 
 /** Shared circle calendar filtered by Guest vs Fun Peeps audience. Caller must be a member. */
 export async function listUpcomingForUser(userId: string): Promise<PlanListRow[]> {
-  return sql(
+  const now = new Date(Date.now() - 12 * 60 * 60 * 1000);
+  const horizon = new Date(Date.now() + 56 * 24 * 60 * 60 * 1000);
+  const timed = await listPlansInRange(
+    userId,
+    now.toISOString(),
+    horizon.toISOString(),
+  );
+  const tbd = await sql<PlanListRow>(
     `select ${PLAN_SELECT}
      from plans p
      where p.status = 'open'
@@ -37,11 +47,66 @@ export async function listUpcomingForUser(userId: string): Promise<PlanListRow[]
          where m.circle_id = $2 and m.user_id = $1
        )
        and ${audienceFilterSql("p", "$1")}
-       and (p.starts_at is null or p.starts_at >= now() - interval '12 hours')
-     order by coalesce(p.starts_at, p.created_at) asc
-     limit 80`,
+       and p.starts_at is null
+     order by p.created_at asc
+     limit 40`,
     [userId, DEFAULT_CIRCLE_ID],
   );
+  return mergePlanRows([...timed, ...tbd]).slice(0, 120);
+}
+
+async function listRecurringSeriesForUser(
+  userId: string,
+  beforeIso: string,
+): Promise<PlanListRow[]> {
+  return sql(
+    `select ${PLAN_SELECT}
+     from plans p
+     where p.status = 'open'
+       and coalesce(p.circle_id, $3) = $3
+       and exists (
+         select 1 from circle_members m
+         where m.circle_id = $3 and m.user_id = $1
+       )
+       and ${audienceFilterSql("p", "$1")}
+       and p.starts_at is not null
+       and p.starts_at < $2::timestamptz
+       and coalesce(p.recurring_rule, '') <> ''
+     order by p.starts_at asc
+     limit 120`,
+    [userId, beforeIso, DEFAULT_CIRCLE_ID],
+  );
+}
+
+function withOccurrence(
+  plan: PlanListRow,
+  startsAt: string,
+  endsAt: string | null,
+  occurrenceKey: string,
+): PlanListRow {
+  return {
+    ...plan,
+    starts_at: startsAt,
+    ends_at: endsAt,
+    occurrence_key: occurrenceKey,
+  };
+}
+
+function mergePlanRows(rows: PlanListRow[]): PlanListRow[] {
+  const seen = new Set<string>();
+  const out: PlanListRow[] = [];
+  for (const row of rows) {
+    const key = `${row.id}::${row.occurrence_key || row.starts_at || ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+  out.sort((a, b) => {
+    const aT = a.starts_at || a.created_at;
+    const bT = b.starts_at || b.created_at;
+    return aT.localeCompare(bT);
+  });
+  return out;
 }
 
 export async function listPlansInRange(
@@ -49,7 +114,7 @@ export async function listPlansInRange(
   rangeStart: string,
   rangeEnd: string,
 ): Promise<PlanListRow[]> {
-  return sql(
+  const inRange = await sql<PlanListRow>(
     `select ${PLAN_SELECT}
      from plans p
      where p.status = 'open'
@@ -66,6 +131,30 @@ export async function listPlansInRange(
      limit 200`,
     [userId, rangeStart, rangeEnd, DEFAULT_CIRCLE_ID],
   );
+
+  const from = new Date(rangeStart);
+  const to = new Date(rangeEnd);
+  const series = await listRecurringSeriesForUser(userId, rangeEnd);
+  const expanded: PlanListRow[] = [];
+  for (const plan of series) {
+    if (!plan.starts_at || !parseRecurringRule(plan.recurring_rule)) continue;
+    const occ = expandRecurringOccurrences({
+      startsAt: plan.starts_at,
+      endsAt: plan.ends_at,
+      recurringRule: plan.recurring_rule,
+      rangeStart: from,
+      rangeEnd: to,
+      limit: 60,
+    });
+    for (const o of occ) {
+      expanded.push(withOccurrence(plan, o.startsAt, o.endsAt, o.occurrenceKey));
+    }
+  }
+
+  // Keep non-recurring in-range rows; for recurring anchors already in range,
+  // prefer the expanded occurrence (same id+day) so times stay consistent.
+  const nonRecurring = inRange.filter((p) => !parseRecurringRule(p.recurring_rule));
+  return mergePlanRows([...nonRecurring, ...expanded]).slice(0, 240);
 }
 
 export async function listWeekendForUser(userId: string): Promise<PlanListRow[]> {

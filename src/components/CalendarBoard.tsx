@@ -28,7 +28,12 @@ export type CalPlan = {
   going_count: number;
   creator_name?: string;
   audience?: string;
+  occurrence_key?: string;
 };
+
+function planKey(e: CalPlan): string {
+  return e.occurrence_key ? `${e.id}::${e.occurrence_key}` : e.id;
+}
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -179,7 +184,7 @@ export function CalendarBoard() {
                 >
                   <span className={styles.dayNum}>{day.getDate()}</span>
                   {events.slice(0, 3).map((e) => (
-                    <Link key={e.id} href={`/plans/${e.id}`} className={styles.event}>
+                    <Link key={planKey(e)} href={`/plans/${e.id}`} className={styles.event}>
                       {e.audience === "guest" ? "G · " : ""}
                       {e.title}
                     </Link>
@@ -213,7 +218,7 @@ export function CalendarBoard() {
                       ) : (
                         events.map((e) => (
                           <Link
-                            key={e.id}
+                            key={planKey(e)}
                             href={`/plans/${e.id}`}
                             className={styles.agendaEvent}
                           >
@@ -249,7 +254,7 @@ export function CalendarBoard() {
                   </p>
                 ) : (
                   events.map((e) => (
-                    <Link key={e.id} href={`/plans/${e.id}`} className={styles.weekEvent}>
+                    <Link key={planKey(e)} href={`/plans/${e.id}`} className={styles.weekEvent}>
                       <strong>{e.title}</strong>
                       <div className={styles.weekMeta}>
                         {e.audience === "guest" ? "Guest · " : "Fun Peeps · "}
@@ -271,7 +276,7 @@ export function CalendarBoard() {
             <p className={styles.empty}>Nothing scheduled — add a plan for the circle.</p>
           ) : (
             plans.map((e) => (
-              <Link key={e.id} href={`/plans/${e.id}`} className={styles.listRow}>
+              <Link key={planKey(e)} href={`/plans/${e.id}`} className={styles.listRow}>
                 <div className={styles.listWhen}>
                   {formatWhenRange(e.starts_at, e.ends_at)}
                 </div>

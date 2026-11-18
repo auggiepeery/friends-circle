@@ -276,11 +276,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
       ) : null}
 
       <main className={styles.main}>
-        {member
-          ? children
-          : loaded
-            ? null
-            : <p className={styles.loading}>Loading…</p>}
+        {member ? (
+          <div key={pathname} className={`${styles.pane} ${styles.paneEnter}`}>
+            {children}
+          </div>
+        ) : loaded ? null : (
+          <p className={styles.loading}>Loading…</p>
+        )}
       </main>
 
       {me && member ? (

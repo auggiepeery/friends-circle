@@ -8,6 +8,7 @@ import {
   fromLocalInputValue,
   toLocalInputValue,
 } from "@/lib/format";
+import { describeRecurringRule } from "@/lib/recurrence";
 import ui from "@/components/ui.module.css";
 
 type Detail = {
@@ -233,14 +234,10 @@ export default function PlanDetailPage() {
   const totalCents = data.expenses.reduce((s, e) => s + e.amount_cents, 0);
   const splitN = Math.max(1, data.rsvps.filter((r) => r.response === "going").length);
   const each = Math.round(totalCents / splitN);
-  const repeatLabel =
-    data.plan.recurring_rule === "weekly"
-      ? "Repeats every week"
-      : data.plan.recurring_rule === "biweekly"
-        ? "Repeats every other week"
-        : data.plan.recurring_rule === "monthly"
-          ? "Repeats every month"
-          : null;
+  const repeatLabel = describeRecurringRule(
+    data.plan.recurring_rule,
+    data.plan.starts_at,
+  );
 
   return (
     <>

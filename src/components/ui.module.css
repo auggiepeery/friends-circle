@@ -146,6 +146,18 @@
   align-items: flex-end;
 }
 
+/* Stacked so the Add day control never overlays the native date field. */
+.dayAddStack {
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 0.85rem;
+}
+
+.dayAddBtn {
+  justify-self: start;
+  width: auto;
+}
+
 .timeRow {
   display: grid;
   grid-template-columns: 1fr 1fr;
