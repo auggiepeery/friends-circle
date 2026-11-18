@@ -16,6 +16,7 @@ type Detail = {
     outdoor: boolean;
     recurring_rule: string;
     creator_id: string;
+    audience?: string;
     lat: number | null;
     lon: number | null;
   };
@@ -238,6 +239,9 @@ export default function PlanDetailPage() {
         </h1>
         <p className={ui.lede}>{data.plan.description || "No notes yet."}</p>
         <div className={ui.meta}>
+          <span className={ui.chip}>
+            {data.plan.audience === "guest" ? "Guest" : "Fun Peeps"}
+          </span>
           <span>{formatWhen(data.plan.starts_at)}</span>
           {data.plan.place ? <span>{data.plan.place}</span> : null}
           {data.plan.reminder_at ? (

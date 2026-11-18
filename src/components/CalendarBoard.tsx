@@ -26,6 +26,7 @@ export type CalPlan = {
   my_rsvp: string | null;
   going_count: number;
   creator_name?: string;
+  audience?: string;
 };
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -157,6 +158,7 @@ export function CalendarBoard() {
                   <span className={styles.dayNum}>{day.getDate()}</span>
                   {events.slice(0, 3).map((e) => (
                     <Link key={e.id} href={`/plans/${e.id}`} className={styles.event}>
+                      {e.audience === "guest" ? "G · " : ""}
                       {e.title}
                     </Link>
                   ))}
@@ -195,6 +197,7 @@ export function CalendarBoard() {
                           >
                             <strong>{e.title}</strong>
                             <div className={styles.weekMeta}>
+                              {e.audience === "guest" ? "Guest · " : "Fun Peeps · "}
                               {formatWhen(e.starts_at)}
                               {e.place ? ` · ${e.place}` : ""}
                             </div>
@@ -227,6 +230,7 @@ export function CalendarBoard() {
                     <Link key={e.id} href={`/plans/${e.id}`} className={styles.weekEvent}>
                       <strong>{e.title}</strong>
                       <div className={styles.weekMeta}>
+                        {e.audience === "guest" ? "Guest · " : "Fun Peeps · "}
                         {formatWhen(e.starts_at)}
                         {e.place ? ` · ${e.place}` : ""}
                       </div>
@@ -250,6 +254,7 @@ export function CalendarBoard() {
                 <div>
                   <div className={styles.listTitle}>{e.title}</div>
                   <div className={styles.listMeta}>
+                    {e.audience === "guest" ? "Guest · " : "Fun Peeps · "}
                     {e.place || "Place TBD"}
                     {e.creator_name ? ` · ${e.creator_name}` : ""}
                     {` · ${e.going_count} going`}

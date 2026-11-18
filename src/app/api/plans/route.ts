@@ -1,6 +1,7 @@
 import { planForViewer } from "@/lib/access";
+import { normalizeAudience, type PlanAudience } from "@/lib/audience";
 import { noStore, requireViewer } from "@/lib/auth";
-import { listCircleMembers, requireCircleMember } from "@/lib/group";
+import { listCircleMembers, memberRole, requireCircleMember } from "@/lib/group";
 import {
   MAX_PLACE,
   MAX_POLL_OPTIONS,
@@ -44,8 +45,17 @@ export async function POST(request: Request) {
     pollQuestion?: string;
     pollOptions?: string[];
     pollKind?: string;
+    audience?: string;
   }>(request);
   if (body instanceof Response) return body;
+
+  const role = await memberRole(viewer.sub);
+  let audience: PlanAudience = normalizeAudience(body.audience);
+  // Guests may only create Guest plans.
+  if (role === "guest") audience = "guest";
+  if (role !== "guest" && body.audience !== undefined) {
+    audience = normalizeAudience(body.audience);
+  }
 
   const tmpl = body.template ? templateById(clip(body.template, 32)) : undefined;
   const title = clip(body.title || tmpl?.title || "", MAX_TITLE);
@@ -70,6 +80,7 @@ export async function POST(request: Request) {
     reminderAt:
       typeof body.reminderAt === "string" ? body.reminderAt.slice(0, 40) : body.reminderAt,
     recurringRule: clip(body.recurringRule, 32),
+    audience,
   });
 
   if (body.pollQuestion) {
@@ -92,11 +103,14 @@ export async function POST(request: Request) {
   const members = await listCircleMembers();
   for (const m of members.slice(0, 40)) {
     if (m.user_id === viewer.sub) continue;
+    const memberIsGuest = m.role === "guest";
+    // Fun Peeps plans: skip guests. Guest plans: notify everyone who can see them.
+    if (audience === "fun_peeps" && memberIsGuest) continue;
     await notify({
       userId: m.user_id,
       kind: "plan",
       title: `On the calendar: ${plan.title}`,
-      body: `${viewer.name} added a plan`,
+      body: `${viewer.name} added a ${audience === "guest" ? "Guest" : "Fun Peeps"} plan`,
       href: `/plans/${plan.id}`,
     });
   }

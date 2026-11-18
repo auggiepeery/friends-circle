@@ -1,10 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PLAN_TEMPLATES } from "@/lib/templates";
 import { fromLocalInputValue } from "@/lib/format";
 import ui from "@/components/ui.module.css";
+
+type Audience = "fun_peeps" | "guest";
 
 export default function NewPlanPage() {
   const router = useRouter();
@@ -19,8 +21,21 @@ export default function NewPlanPage() {
   const [pollQuestion, setPollQuestion] = useState("");
   const [pollOptions, setPollOptions] = useState("Fri 7pm\nSat 6pm\nSun afternoon");
   const [pollKind, setPollKind] = useState("time");
+  const [audience, setAudience] = useState<Audience>("fun_peeps");
+  const [isGuest, setIsGuest] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/me")
+      .then((r) => r.json())
+      .then((data) => {
+        const guest = data.viewer?.role === "guest" || data.viewer?.via === "guest";
+        setIsGuest(Boolean(guest));
+        if (guest) setAudience("guest");
+      })
+      .catch(() => undefined);
+  }, []);
 
   function applyTemplate(id: string) {
     setTemplate(id);
@@ -57,6 +72,7 @@ export default function NewPlanPage() {
         pollQuestion: pollQuestion || undefined,
         pollOptions: options,
         pollKind,
+        audience: isGuest ? "guest" : audience,
         lat: outdoor ? 40.76 : null,
         lon: outdoor ? -111.89 : null,
       }),
@@ -77,12 +93,45 @@ export default function NewPlanPage() {
           Add to the calendar
         </h1>
         <p className={ui.lede}>
-          Plans land on the shared circle calendar — everyone sees them. Optional
-          poll if the when/where is still fuzzy.
+          Choose Guest or Fun Peeps. Guests only see Guest plans; Fun Peeps see
+          Fun Peeps plans (and Guest plans they host). Optional poll if timing
+          is still fuzzy.
         </p>
       </section>
 
       <form className={`${ui.form} rise rise-delay-1`} onSubmit={submit}>
+        <div>
+          <p className={ui.muted} style={{ marginBottom: "0.55rem" }}>
+            Who’s this for?
+          </p>
+          {isGuest ? (
+            <p className={ui.chip}>Guest plan (guests only see Guest plans)</p>
+          ) : (
+            <div className={ui.segRow} role="radiogroup" aria-label="Plan audience">
+              <button
+                type="button"
+                className={ui.segBtn}
+                data-active={audience === "fun_peeps"}
+                aria-checked={audience === "fun_peeps"}
+                role="radio"
+                onClick={() => setAudience("fun_peeps")}
+              >
+                Fun Peeps
+              </button>
+              <button
+                type="button"
+                className={ui.segBtn}
+                data-active={audience === "guest"}
+                aria-checked={audience === "guest"}
+                role="radio"
+                onClick={() => setAudience("guest")}
+              >
+                Guest
+              </button>
+            </div>
+          )}
+        </div>
+
         <div className={ui.templateRow}>
           <button
             type="button"
