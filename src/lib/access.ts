@@ -1,15 +1,18 @@
+import { canUserSeeAudience } from "./audience";
 import { canAccessCirclePlan } from "./group";
 import type { Plan } from "./types";
 
-/** Any circle member can open any plan on the shared calendar. */
+/** Circle membership + Guest vs Fun Peeps audience. */
 export async function canAccessPlan(
   plan: Plan,
   userId: string,
 ): Promise<boolean> {
-  return canAccessCirclePlan(
+  const inCircle = await canAccessCirclePlan(
     (plan as Plan & { circle_id?: string | null }).circle_id,
     userId,
   );
+  if (!inCircle) return false;
+  return canUserSeeAudience(userId, plan.audience);
 }
 
 /** Never expose share tokens — calendar is shared in-app, not via send links. */

@@ -26,6 +26,7 @@ export type CalPlan = {
   my_rsvp: string | null;
   going_count: number;
   creator_name?: string;
+  audience?: string;
 };
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -136,42 +137,79 @@ export function CalendarBoard() {
       {loading ? <p className={styles.empty}>Loading calendar…</p> : null}
 
       {!loading && view === "month" ? (
-        <div className={`${styles.month} rise rise-delay-3`}>
-          {DOW.map((d) => (
-            <div key={d} className={styles.dow}>
-              {d}
-            </div>
-          ))}
-          {monthGrid(anchor).map((day) => {
-            const key = dayKey(day);
-            const events = byDay.get(key) || [];
-            const inMonth = day.getMonth() === anchor.getMonth();
-            return (
-              <div
-                key={key}
-                className={`${styles.cell} ${inMonth ? "" : styles.cellMuted} ${
-                  sameDay(day, today) ? styles.cellToday : ""
-                }`}
-              >
-                <span className={styles.dayNum}>{day.getDate()}</span>
-                {events.slice(0, 3).map((e) => (
-                  <Link key={e.id} href={`/plans/${e.id}`} className={styles.event}>
-                    {e.title}
-                  </Link>
-                ))}
-                {events.length > 3 ? (
-                  <span className={styles.dayNum}>+{events.length - 3}</span>
-                ) : null}
+        <>
+          <div className={`${styles.month} rise rise-delay-3`}>
+            {DOW.map((d) => (
+              <div key={d} className={styles.dow}>
+                {d}
               </div>
-            );
-          })}
-        </div>
-      ) : null}
+            ))}
+            {monthGrid(anchor).map((day) => {
+              const key = dayKey(day);
+              const events = byDay.get(key) || [];
+              const inMonth = day.getMonth() === anchor.getMonth();
+              return (
+                <div
+                  key={key}
+                  className={`${styles.cell} ${inMonth ? "" : styles.cellMuted} ${
+                    sameDay(day, today) ? styles.cellToday : ""
+                  }`}
+                >
+                  <span className={styles.dayNum}>{day.getDate()}</span>
+                  {events.slice(0, 3).map((e) => (
+                    <Link key={e.id} href={`/plans/${e.id}`} className={styles.event}>
+                      {e.audience === "guest" ? "G · " : ""}
+                      {e.title}
+                    </Link>
+                  ))}
+                  {events.length > 3 ? (
+                    <span className={styles.dayNum}>+{events.length - 3}</span>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
 
-      {!loading && view === "month" ? (
-        <p className={`${styles.empty} ${styles.weekMobileHint}`}>
-          On small screens, switch to week or list.
-        </p>
+          <div className={`${styles.monthAgenda} rise rise-delay-3`}>
+            {monthGrid(anchor)
+              .filter((day) => day.getMonth() === anchor.getMonth())
+              .map((day) => {
+                const key = dayKey(day);
+                const events = byDay.get(key) || [];
+                if (events.length === 0 && !sameDay(day, today)) return null;
+                return (
+                  <div key={key} className={styles.agendaDay}>
+                    <div className={styles.agendaDate}>
+                      {day.getDate()}
+                      <span className={styles.agendaDow}>{DOW[day.getDay()]}</span>
+                    </div>
+                    <div className={styles.agendaEvents}>
+                      {events.length === 0 ? (
+                        <p className={styles.empty} style={{ padding: 0 }}>
+                          Today — nothing yet
+                        </p>
+                      ) : (
+                        events.map((e) => (
+                          <Link
+                            key={e.id}
+                            href={`/plans/${e.id}`}
+                            className={styles.agendaEvent}
+                          >
+                            <strong>{e.title}</strong>
+                            <div className={styles.weekMeta}>
+                              {e.audience === "guest" ? "Guest · " : "Fun Peeps · "}
+                              {formatWhen(e.starts_at)}
+                              {e.place ? ` · ${e.place}` : ""}
+                            </div>
+                          </Link>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </>
       ) : null}
 
       {!loading && view === "week" ? (
@@ -192,6 +230,7 @@ export function CalendarBoard() {
                     <Link key={e.id} href={`/plans/${e.id}`} className={styles.weekEvent}>
                       <strong>{e.title}</strong>
                       <div className={styles.weekMeta}>
+                        {e.audience === "guest" ? "Guest · " : "Fun Peeps · "}
                         {formatWhen(e.starts_at)}
                         {e.place ? ` · ${e.place}` : ""}
                       </div>
@@ -215,6 +254,7 @@ export function CalendarBoard() {
                 <div>
                   <div className={styles.listTitle}>{e.title}</div>
                   <div className={styles.listMeta}>
+                    {e.audience === "guest" ? "Guest · " : "Fun Peeps · "}
                     {e.place || "Place TBD"}
                     {e.creator_name ? ` · ${e.creator_name}` : ""}
                     {` · ${e.going_count} going`}

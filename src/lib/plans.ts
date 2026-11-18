@@ -1,3 +1,4 @@
+import { audienceFilterSql, normalizeAudience, type PlanAudience } from "./audience";
 import { sql } from "./db";
 import { DEFAULT_CIRCLE_ID } from "./group";
 import { id, shareToken } from "./ids";
@@ -17,14 +18,14 @@ export type PlanListRow = Omit<Plan, "share_token"> & {
   creator_name?: string;
 };
 
-const PLAN_SELECT = `p.id, p.creator_id, p.circle_id, p.title, p.description, p.place,
+const PLAN_SELECT = `p.id, p.creator_id, p.circle_id, p.audience, p.title, p.description, p.place,
        p.starts_at, p.ends_at, p.template, p.outdoor, p.lat, p.lon,
        p.reminder_at, p.recurring_rule, p.status, p.created_at, p.updated_at,
        (select r.response from plan_rsvps r where r.plan_id = p.id and r.user_id = $1) as my_rsvp,
        (select count(*)::int from plan_rsvps r where r.plan_id = p.id and r.response = 'going') as going_count,
        (select pr.display_name from profiles pr where pr.id = p.creator_id) as creator_name`;
 
-/** Shared circle calendar: every member sees every open plan. Caller must be a member. */
+/** Shared circle calendar filtered by Guest vs Fun Peeps audience. Caller must be a member. */
 export async function listUpcomingForUser(userId: string): Promise<PlanListRow[]> {
   return sql(
     `select ${PLAN_SELECT}
@@ -35,6 +36,7 @@ export async function listUpcomingForUser(userId: string): Promise<PlanListRow[]
          select 1 from circle_members m
          where m.circle_id = $2 and m.user_id = $1
        )
+       and ${audienceFilterSql("p", "$1")}
        and (p.starts_at is null or p.starts_at >= now() - interval '12 hours')
      order by coalesce(p.starts_at, p.created_at) asc
      limit 80`,
@@ -56,6 +58,7 @@ export async function listPlansInRange(
          select 1 from circle_members m
          where m.circle_id = $4 and m.user_id = $1
        )
+       and ${audienceFilterSql("p", "$1")}
        and p.starts_at is not null
        and p.starts_at >= $2::timestamptz
        and p.starts_at < $3::timestamptz
@@ -102,20 +105,23 @@ export async function createPlan(input: {
   lon?: number | null;
   reminderAt?: string | null;
   recurringRule?: string;
+  audience?: PlanAudience;
 }): Promise<Plan> {
   const planId = id("plan");
   const token = shareToken();
+  const audience = normalizeAudience(input.audience);
   const rows = await sql<Plan>(
     `insert into plans (
-       id, share_token, creator_id, circle_id, title, description, place,
+       id, share_token, creator_id, circle_id, audience, title, description, place,
        starts_at, ends_at, template, outdoor, lat, lon, reminder_at, recurring_rule
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
      returning *`,
     [
       planId,
       token,
       input.creatorId,
       DEFAULT_CIRCLE_ID,
+      audience,
       input.title.trim(),
       (input.description ?? "").trim(),
       (input.place ?? "").trim(),
@@ -187,13 +193,51 @@ export async function updatePlan(
   return rows[0] ?? null;
 }
 
-/** Hard-delete a plan; related RSVPs/comments/polls/expenses cascade. */
+/** Hard-delete a plan; related RSVPs/comments/polls/expenses cascade.
+ * Also purge Alerts that deep-link to this plan so deleted events vanish from notifications.
+ */
 export async function deletePlan(planId: string): Promise<boolean> {
+  const href = `/plans/${planId}`;
+  await sql(
+    `delete from notifications
+     where href = $1
+        or href like $2`,
+    [href, `${href}/%`],
+  );
   const rows = await sql<{ id: string }>(
     `delete from plans where id = $1 returning id`,
     [planId],
   );
   return Boolean(rows[0]);
+}
+
+/** Drop alerts that still point at plans which no longer exist (legacy orphans). */
+export async function purgeOrphanPlanNotifications(
+  userId?: string,
+): Promise<void> {
+  if (userId) {
+    await sql(
+      `delete from notifications n
+       where n.user_id = $1
+         and n.href like '/plans/%'
+         and not exists (
+           select 1 from plans p
+           where n.href = '/plans/' || p.id
+              or n.href like '/plans/' || p.id || '/%'
+         )`,
+      [userId],
+    );
+    return;
+  }
+  await sql(
+    `delete from notifications n
+     where n.href like '/plans/%'
+       and not exists (
+         select 1 from plans p
+         where n.href = '/plans/' || p.id
+            or n.href like '/plans/' || p.id || '/%'
+       )`,
+  );
 }
 
 export async function listRsvps(planId: string): Promise<Rsvp[]> {

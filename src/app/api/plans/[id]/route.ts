@@ -214,12 +214,7 @@ export async function POST(request: Request, ctx: Ctx) {
       return Response.json({ comment }, { status: 201, headers: noStore });
     }
     case "poll": {
-      if (plan.creator_id !== viewer.sub) {
-        return Response.json(
-          { error: "forbidden" },
-          { status: 403, headers: noStore },
-        );
-      }
+      // Any circle member can add a poll to an existing plan.
       const options = Array.isArray(body.options)
         ? body.options
             .slice(0, MAX_POLL_OPTIONS)
@@ -232,12 +227,28 @@ export async function POST(request: Request, ctx: Ctx) {
           { status: 400, headers: noStore },
         );
       }
+      const question = clip(body.question, 200);
+      if (!question) {
+        return Response.json(
+          { error: "question_required" },
+          { status: 400, headers: noStore },
+        );
+      }
       const poll = await createPoll({
         planId: id,
         kind: clip(body.kind, 16) || "time",
-        question: clip(body.question, 200) || "When works?",
+        question,
         options,
       });
+      if (plan.creator_id !== viewer.sub) {
+        await notify({
+          userId: plan.creator_id,
+          kind: "poll",
+          title: `New poll on ${plan.title}`,
+          body: question.slice(0, 80),
+          href: `/plans/${id}`,
+        });
+      }
       return Response.json({ poll }, { status: 201, headers: noStore });
     }
     case "vote": {

@@ -10,6 +10,8 @@ export type Plan = {
   share_token: string;
   creator_id: string;
   circle_id?: string | null;
+  /** `fun_peeps` (named members) or `guest` (guest-visible). */
+  audience?: string;
   title: string;
   description: string;
   place: string;
