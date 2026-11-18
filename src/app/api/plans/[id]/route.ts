@@ -1,5 +1,6 @@
 import { canAccessPlan, planForViewer } from "@/lib/access";
 import { noStore, requireViewer } from "@/lib/auth";
+import { requireSameOrigin } from "@/lib/csrf";
 import { memberRole } from "@/lib/group";
 import {
   MAX_PLACE,
@@ -25,6 +26,8 @@ import {
   updatePlan,
   votePoll,
 } from "@/lib/plans";
+import { clientKey, rateLimit } from "@/lib/rate-limit";
+import { isReasonablePlanTime } from "@/lib/recurrence";
 
 export const dynamic = "force-dynamic";
 
@@ -80,6 +83,14 @@ export async function GET(request: Request, ctx: Ctx) {
 }
 
 export async function DELETE(request: Request, ctx: Ctx) {
+  const csrf = requireSameOrigin(request);
+  if (csrf) return csrf;
+  if (!rateLimit(clientKey(request, "plans-mutate"), 40, 60_000)) {
+    return Response.json(
+      { error: "rate_limited" },
+      { status: 429, headers: noStore },
+    );
+  }
   const { id } = await ctx.params;
   const auth = await loadAuthorizedPlan(request, id);
   if ("error" in auth && auth.error) return auth.error;
@@ -107,6 +118,14 @@ export async function DELETE(request: Request, ctx: Ctx) {
 }
 
 export async function PATCH(request: Request, ctx: Ctx) {
+  const csrf = requireSameOrigin(request);
+  if (csrf) return csrf;
+  if (!rateLimit(clientKey(request, "plans-mutate"), 40, 60_000)) {
+    return Response.json(
+      { error: "rate_limited" },
+      { status: 429, headers: noStore },
+    );
+  }
   const { id } = await ctx.params;
   const auth = await loadAuthorizedPlan(request, id);
   if ("error" in auth && auth.error) return auth.error;
@@ -119,18 +138,29 @@ export async function PATCH(request: Request, ctx: Ctx) {
   }
   const body = await readJsonBounded<Record<string, unknown>>(request);
   if (body instanceof Response) return body;
+  const startsAt =
+    body.startsAt === null || typeof body.startsAt === "string"
+      ? (body.startsAt as string | null)
+      : undefined;
+  const endsAt =
+    body.endsAt === null || typeof body.endsAt === "string"
+      ? (body.endsAt as string | null)
+      : undefined;
+  if (
+    (startsAt !== undefined && !isReasonablePlanTime(startsAt)) ||
+    (endsAt !== undefined && !isReasonablePlanTime(endsAt))
+  ) {
+    return Response.json(
+      { error: "bad_time_range" },
+      { status: 400, headers: noStore },
+    );
+  }
   const updated = await updatePlan(id, {
     title: clip(body.title, MAX_TITLE) || undefined,
     description: clip(body.description, MAX_TEXT) || undefined,
     place: clip(body.place, MAX_PLACE) || undefined,
-    startsAt:
-      body.startsAt === null || typeof body.startsAt === "string"
-        ? (body.startsAt as string | null)
-        : undefined,
-    endsAt:
-      body.endsAt === null || typeof body.endsAt === "string"
-        ? (body.endsAt as string | null)
-        : undefined,
+    startsAt,
+    endsAt,
     outdoor: typeof body.outdoor === "boolean" ? body.outdoor : undefined,
     recurringRule:
       typeof body.recurringRule === "string"
@@ -145,6 +175,14 @@ export async function PATCH(request: Request, ctx: Ctx) {
 }
 
 export async function POST(request: Request, ctx: Ctx) {
+  const csrf = requireSameOrigin(request);
+  if (csrf) return csrf;
+  if (!rateLimit(clientKey(request, "plans-mutate"), 40, 60_000)) {
+    return Response.json(
+      { error: "rate_limited" },
+      { status: 429, headers: noStore },
+    );
+  }
   const { id } = await ctx.params;
   const auth = await loadAuthorizedPlan(request, id);
   if ("error" in auth && auth.error) return auth.error;

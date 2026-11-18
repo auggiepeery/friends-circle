@@ -1,6 +1,7 @@
 import { planForViewer } from "@/lib/access";
 import { normalizeAudience, type PlanAudience } from "@/lib/audience";
 import { noStore, requireViewer } from "@/lib/auth";
+import { requireSameOrigin } from "@/lib/csrf";
 import { listCircleMembers, memberRole, requireCircleMember } from "@/lib/group";
 import {
   MAX_PLACE,
@@ -12,6 +13,8 @@ import {
   readJsonBounded,
 } from "@/lib/http";
 import { createPlan, createPoll, listUpcomingForUser, notify } from "@/lib/plans";
+import { clientKey, rateLimit } from "@/lib/rate-limit";
+import { isReasonablePlanTime } from "@/lib/recurrence";
 import { templateById } from "@/lib/templates";
 
 export const dynamic = "force-dynamic";
@@ -54,6 +57,14 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const csrf = requireSameOrigin(request);
+  if (csrf) return csrf;
+  if (!rateLimit(clientKey(request, "plans-write"), 20, 60_000)) {
+    return Response.json(
+      { error: "rate_limited" },
+      { status: 429, headers: noStore },
+    );
+  }
   const viewer = await requireViewer(request);
   if (viewer instanceof Response) return viewer;
   const gate = await requireCircleMember(viewer.sub);
@@ -95,6 +106,14 @@ export async function POST(request: Request) {
   }
 
   const slots = normalizeSlots(body);
+  for (const slot of slots) {
+    if (!isReasonablePlanTime(slot.startsAt) || !isReasonablePlanTime(slot.endsAt)) {
+      return Response.json(
+        { error: "bad_time_range" },
+        { status: 400, headers: noStore },
+      );
+    }
+  }
   const shared = {
     creatorId: viewer.sub,
     title,

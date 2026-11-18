@@ -1,4 +1,5 @@
 import { noStore, requireViewer } from "@/lib/auth";
+import { requireSameOrigin } from "@/lib/csrf";
 import { guestCookieHeader } from "@/lib/guest";
 import {
   addNamedFriend,
@@ -38,6 +39,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const csrf = requireSameOrigin(request);
+  if (csrf) return csrf;
   if (!rateLimit(clientKey(request, "circle-write"), 30, 60_000)) {
     return Response.json(
       { error: "rate_limited" },
