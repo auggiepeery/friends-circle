@@ -9,6 +9,7 @@ export type Plan = {
   id: string;
   share_token: string;
   creator_id: string;
+  circle_id?: string | null;
   title: string;
   description: string;
   place: string;

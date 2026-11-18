@@ -82,13 +82,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </Link>
         <nav className={styles.nav} aria-label="Primary">
           <Link href="/" data-active={active("/")}>
-            Home
+            Calendar
           </Link>
-          <Link href="/weekend" data-active={active("/weekend")}>
-            Weekend
-          </Link>
-          <Link href="/friends" data-active={active("/friends")}>
-            Friends
+          <Link href="/circle" data-active={active("/circle")}>
+            Circle
           </Link>
           <Link href="/notifications" data-active={active("/notifications")}>
             Alerts
@@ -97,7 +94,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             ) : null}
           </Link>
           <Link href="/plans/new" data-active={active("/plans/new")}>
-            New plan
+            Add plan
           </Link>
           {me ? (
             <span
@@ -121,10 +118,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className={styles.gate}>
           <form className={styles.gateForm} onSubmit={signIn}>
             <div>
-              <strong>Join as a friend</strong>
+              <strong>Join the circle</strong>
               <p>
-                Public Fun Peepers uses a display name (and invite / share links).
-                Pick a name to plan and RSVP.
+                Fun Peepers is a shared calendar for a small group of friends.
+                Pick a display name to see everyone’s plans.
               </p>
             </div>
             <input
@@ -137,7 +134,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               maxLength={120}
             />
             <button type="submit" className={styles.gateBtn} disabled={busy}>
-              {busy ? "Joining…" : "Continue"}
+              {busy ? "Joining…" : "Enter calendar"}
             </button>
           </form>
         </div>
@@ -157,16 +154,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
       <nav className={styles.mobile} aria-label="Mobile">
         <Link href="/" data-active={active("/")}>
-          Home
+          Cal
         </Link>
-        <Link href="/weekend" data-active={active("/weekend")}>
-          Weekend
+        <Link href="/circle" data-active={active("/circle")}>
+          Circle
         </Link>
         <Link href="/plans/new" data-active={active("/plans/new")}>
-          New
-        </Link>
-        <Link href="/friends" data-active={active("/friends")}>
-          Friends
+          Add
         </Link>
         <Link href="/notifications" data-active={active("/notifications")}>
           Alerts

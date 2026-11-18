@@ -4,6 +4,7 @@ import {
   guestCookieHeader,
   newGuestId,
 } from "@/lib/guest";
+import { joinDefaultCircle } from "@/lib/group";
 import { MAX_TITLE, clip, readJsonBounded } from "@/lib/http";
 import { sql } from "@/lib/db";
 
@@ -78,6 +79,7 @@ export async function POST(request: Request) {
      on conflict (id) do update set display_name = excluded.display_name`,
     [guestId, name],
   );
+  await joinDefaultCircle(guestId);
 
   return Response.json(
     {

@@ -1,4 +1,5 @@
 import { sql } from "./db";
+import { DEFAULT_CIRCLE_ID, joinDefaultCircle } from "./group";
 import { id, shareToken } from "./ids";
 import type {
   Comment,
@@ -10,71 +11,72 @@ import type {
   Rsvp,
 } from "./types";
 
-type PlanListRow = Omit<Plan, "share_token"> & {
+export type PlanListRow = Omit<Plan, "share_token"> & {
   my_rsvp: string | null;
   going_count: number;
+  creator_name?: string;
 };
 
-export async function listUpcomingForUser(userId: string): Promise<PlanListRow[]> {
-  return sql(
-    `select p.id, p.creator_id, p.title, p.description, p.place,
+const PLAN_SELECT = `p.id, p.creator_id, p.circle_id, p.title, p.description, p.place,
        p.starts_at, p.ends_at, p.template, p.outdoor, p.lat, p.lon,
        p.reminder_at, p.recurring_rule, p.status, p.created_at, p.updated_at,
        (select r.response from plan_rsvps r where r.plan_id = p.id and r.user_id = $1) as my_rsvp,
-       (select count(*)::int from plan_rsvps r where r.plan_id = p.id and r.response = 'going') as going_count
+       (select count(*)::int from plan_rsvps r where r.plan_id = p.id and r.response = 'going') as going_count,
+       (select pr.display_name from profiles pr where pr.id = p.creator_id) as creator_name`;
+
+/** Shared circle calendar: every member sees every open plan. */
+export async function listUpcomingForUser(userId: string): Promise<PlanListRow[]> {
+  await joinDefaultCircle(userId);
+  return sql(
+    `select ${PLAN_SELECT}
      from plans p
      where p.status = 'open'
-       and (
-         p.creator_id = $1
-         or exists (select 1 from plan_rsvps r where r.plan_id = p.id and r.user_id = $1)
-         or exists (
-           select 1 from friendships f
-           where f.status = 'accepted'
-             and ((f.user_id = $1 and f.friend_id = p.creator_id)
-               or (f.friend_id = $1 and f.user_id = p.creator_id))
-         )
+       and coalesce(p.circle_id, $2) = $2
+       and exists (
+         select 1 from circle_members m
+         where m.circle_id = $2 and m.user_id = $1
        )
        and (p.starts_at is null or p.starts_at >= now() - interval '12 hours')
      order by coalesce(p.starts_at, p.created_at) asc
-     limit 40`,
-    [userId],
+     limit 80`,
+    [userId, DEFAULT_CIRCLE_ID],
+  );
+}
+
+export async function listPlansInRange(
+  userId: string,
+  rangeStart: string,
+  rangeEnd: string,
+): Promise<PlanListRow[]> {
+  await joinDefaultCircle(userId);
+  return sql(
+    `select ${PLAN_SELECT}
+     from plans p
+     where p.status = 'open'
+       and coalesce(p.circle_id, $4) = $4
+       and exists (
+         select 1 from circle_members m
+         where m.circle_id = $4 and m.user_id = $1
+       )
+       and p.starts_at is not null
+       and p.starts_at >= $2::timestamptz
+       and p.starts_at < $3::timestamptz
+     order by p.starts_at asc
+     limit 200`,
+    [userId, rangeStart, rangeEnd, DEFAULT_CIRCLE_ID],
   );
 }
 
 export async function listWeekendForUser(userId: string): Promise<PlanListRow[]> {
   const now = new Date();
-  const day = now.getDay(); // 0 Sun .. 6 Sat
+  const day = now.getDay();
   const toFri = (5 - day + 7) % 7;
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
   start.setDate(start.getDate() + toFri);
   const end = new Date(start);
   end.setDate(end.getDate() + 3);
-  return sql(
-    `select p.id, p.creator_id, p.title, p.description, p.place,
-       p.starts_at, p.ends_at, p.template, p.outdoor, p.lat, p.lon,
-       p.reminder_at, p.recurring_rule, p.status, p.created_at, p.updated_at,
-       (select r.response from plan_rsvps r where r.plan_id = p.id and r.user_id = $1) as my_rsvp,
-       (select count(*)::int from plan_rsvps r where r.plan_id = p.id and r.response = 'going') as going_count
-     from plans p
-     where p.status = 'open'
-       and p.starts_at is not null
-       and p.starts_at >= $2::timestamptz
-       and p.starts_at < $3::timestamptz
-       and (
-         p.creator_id = $1
-         or exists (select 1 from plan_rsvps r where r.plan_id = p.id and r.user_id = $1)
-         or exists (
-           select 1 from friendships f
-           where f.status = 'accepted'
-             and ((f.user_id = $1 and f.friend_id = p.creator_id)
-               or (f.friend_id = $1 and f.user_id = p.creator_id))
-         )
-       )
-     order by p.starts_at asc
-     limit 40`,
-    [userId, start.toISOString(), end.toISOString()],
-  );
+  return listPlansInRange(userId, start.toISOString(), end.toISOString());
 }
 
 export async function getPlan(planId: string): Promise<Plan | null> {
@@ -103,18 +105,20 @@ export async function createPlan(input: {
   reminderAt?: string | null;
   recurringRule?: string;
 }): Promise<Plan> {
+  await joinDefaultCircle(input.creatorId);
   const planId = id("plan");
   const token = shareToken();
   const rows = await sql<Plan>(
     `insert into plans (
-       id, share_token, creator_id, title, description, place,
+       id, share_token, creator_id, circle_id, title, description, place,
        starts_at, ends_at, template, outdoor, lat, lon, reminder_at, recurring_rule
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      returning *`,
     [
       planId,
       token,
       input.creatorId,
+      DEFAULT_CIRCLE_ID,
       input.title.trim(),
       (input.description ?? "").trim(),
       (input.place ?? "").trim(),

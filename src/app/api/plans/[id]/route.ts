@@ -67,7 +67,7 @@ export async function GET(request: Request, ctx: Ctx) {
   ]);
   return Response.json(
     {
-      plan: planForViewer(plan, viewer.sub),
+      plan: planForViewer(plan),
       rsvps,
       comments,
       polls,
@@ -114,7 +114,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
     status: typeof body.status === "string" ? clip(body.status, 32) : undefined,
   });
   return Response.json(
-    { plan: updated ? planForViewer(updated, viewer.sub) : null },
+    { plan: updated ? planForViewer(updated) : null },
     { headers: noStore },
   );
 }

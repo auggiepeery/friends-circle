@@ -1,12 +1,12 @@
 # Fun Peepers (friends-circle)
 
-Multi-user friends planning app: create hangouts, RSVP, poll times/places, chat on a plan, share links, weekend view, friend invites, light expense split, and outdoor weather.
+Shared calendar for a small group of friends. Everyone in the circle sees every plan — no “send to friends” step. RSVP, chat, and polls live on each plan.
 
 ## Stack
 
 - Next.js App Router + TypeScript + CSS Modules
 - Postgres via `DATABASE_URL` (PGlite locally when unset)
-- Cursor apps identity for signed-in viewers (simulated locally)
+- Guest display-name sign-in for Public; Cursor identity when available
 
 ## Develop
 
@@ -19,4 +19,4 @@ Open http://127.0.0.1:3000
 
 ## Brand
 
-**Fun Peepers** — deep teal night atmosphere, Syne + Manrope, lagoon/lamp accents.
+**Fun Peepers** — deep teal night atmosphere, Syne + Manrope, lagoon/lamp accents. Home is a shared month/week/list calendar.
