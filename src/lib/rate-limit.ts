@@ -19,7 +19,28 @@ export function rateLimit(
   return true;
 }
 
+/**
+ * Rate-limit key that does not trust client-supplied forwarding headers.
+ * Uses the signed session cookie when present; otherwise a shared
+ * anonymous bucket per route (single-instance global throttle).
+ */
 export function clientKey(request: Request, suffix: string): string {
-  const fwd = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return `${fwd || "local"}:${suffix}`;
+  const raw = request.headers.get("cookie") || "";
+  const match = raw
+    .split(";")
+    .map((p) => p.trim())
+    .find((p) => p.startsWith("fp_guest="));
+  if (match) {
+    const value = decodeURIComponent(match.slice("fp_guest=".length));
+    const sessionId = value.split(".")[0];
+    if (
+      sessionId &&
+      (sessionId.startsWith("guest:") ||
+        sessionId.startsWith("friend:") ||
+        sessionId.startsWith("user:"))
+    ) {
+      return `session:${sessionId}:${suffix}`;
+    }
+  }
+  return `anon:${suffix}`;
 }

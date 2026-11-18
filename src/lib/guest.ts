@@ -5,15 +5,11 @@ const COOKIE = "fp_guest";
 const MAX_AGE = 60 * 60 * 24 * 180; // 180 days
 
 function secret(): string {
-  // Prefer an explicit cookie secret; never fall back to DATABASE_URL.
-  const fromEnv =
-    process.env.SESSION_COOKIE_SECRET?.trim() ||
-    process.env.FOUNDER_SETUP_SECRET?.trim();
-  if (fromEnv) return fromEnv;
-  if (process.env.NODE_ENV === "production") {
-    return "fun-peepers-prod-cookie-fallback";
+  const fromEnv = process.env.SESSION_COOKIE_SECRET?.trim();
+  if (!fromEnv) {
+    throw new Error("SESSION_COOKIE_SECRET is required");
   }
-  return "fun-peepers-local-guest";
+  return fromEnv;
 }
 
 function sign(sessionId: string): string {
@@ -49,7 +45,12 @@ export function readGuestId(request: Request): string | null {
   const value = decodeURIComponent(match.slice(COOKIE.length + 1));
   const [sessionId, sig] = value.split(".");
   if (!sessionId || !sig || !isSessionId(sessionId)) return null;
-  const expected = sign(sessionId);
+  let expected: string;
+  try {
+    expected = sign(sessionId);
+  } catch {
+    return null;
+  }
   try {
     const a = Buffer.from(sig);
     const b = Buffer.from(expected);
