@@ -352,9 +352,28 @@ export function CalendarBoard() {
           aria-label={`Who's free on ${formatDayHeading(selectedDay)}`}
         >
           <div className={styles.whosFreeHead}>
-            <h2 className={styles.whosFreeTitle}>
-              Who&apos;s free · {formatDayHeading(selectedDay)}
-            </h2>
+            <p className={styles.whosFreeTitle}>
+              <span className={styles.whosFreeLabel}>Free?</span>
+              <span className={styles.whosFreeDay}>{formatDayHeading(selectedDay)}</span>
+              {!availLoading && avail ? (
+                <span className={styles.whosFreeCounts} aria-hidden="true">
+                  {avail.free_count > 0 ? (
+                    <span data-tone="free">{avail.free_count} free</span>
+                  ) : null}
+                  {avail.busy_count > 0 ? (
+                    <span data-tone="busy">{avail.busy_count} busy</span>
+                  ) : null}
+                  {avail.unknown_count > 0 ? (
+                    <span data-tone="unknown">{avail.unknown_count} unset</span>
+                  ) : null}
+                  {avail.free_count === 0 &&
+                  avail.busy_count === 0 &&
+                  avail.unknown_count === 0 ? (
+                    <span data-tone="unknown">none</span>
+                  ) : null}
+                </span>
+              ) : null}
+            </p>
             <button
               type="button"
               className={styles.whosFreeClose}
@@ -371,14 +390,6 @@ export function CalendarBoard() {
 
           {!availLoading && avail ? (
             <div className={styles.whosFreeBody}>
-              <div className={styles.whosFreeSummary}>
-                <span data-tone="free">{avail.free_count} free</span>
-                <span data-tone="busy">{avail.busy_count} busy</span>
-                {avail.unknown_count > 0 ? (
-                  <span data-tone="unknown">{avail.unknown_count} unset</span>
-                ) : null}
-              </div>
-
               {freeMembers.length === 0 &&
               busyMembers.length === 0 &&
               unknownMembers.length === 0 ? (
@@ -386,31 +397,23 @@ export function CalendarBoard() {
               ) : null}
 
               {freeMembers.length > 0 ? (
-                <ul className={styles.whosFreeList}>
-                  {freeMembers.map((m) => (
-                    <li key={m.user_id} className={styles.whosFreeRow} data-status="free">
-                      <span className={styles.whosFreeName}>{m.display_name}</span>
-                      <span className={styles.whosFreeStatus}>Free</span>
-                    </li>
-                  ))}
-                </ul>
+                <p className={styles.whosFreeInline} data-tone="free">
+                  {freeMembers.map((m) => m.display_name).join(" · ")}
+                </p>
               ) : null}
 
               {busyMembers.length > 0 ? (
-                <ul className={styles.whosFreeList}>
+                <ul className={styles.whosFreeBusyList}>
                   {busyMembers.map((m) => (
-                    <li key={m.user_id} className={styles.whosFreeRow} data-status="busy">
-                      <div className={styles.whosFreeBusyTop}>
-                        <span className={styles.whosFreeName}>{m.display_name}</span>
-                        <span className={styles.whosFreeStatus}>Busy</span>
-                      </div>
-                      <p className={styles.busyLine}>
+                    <li key={m.user_id}>
+                      <span className={styles.whosFreeName}>{m.display_name}</span>
+                      <span className={styles.busyLine}>
                         {m.blocks
-                          .slice(0, 2)
+                          .slice(0, 1)
                           .map((b) => `${b.time_label} ${b.label}`)
-                          .join(" · ")}
-                        {m.blocks.length > 2 ? ` · +${m.blocks.length - 2}` : ""}
-                      </p>
+                          .join("")}
+                        {m.blocks.length > 1 ? ` +${m.blocks.length - 1}` : ""}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -418,7 +421,7 @@ export function CalendarBoard() {
 
               {unknownMembers.length > 0 ? (
                 <p className={styles.whosFreeHint}>
-                  Unset: {unknownMembers.map((m) => m.display_name).join(", ")}
+                  Unset · {unknownMembers.map((m) => m.display_name).join(" · ")}
                 </p>
               ) : null}
             </div>
