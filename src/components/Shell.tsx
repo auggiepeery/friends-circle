@@ -21,9 +21,23 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [loaded, setLoaded] = useState(false);
   const [name, setName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [setupSecret, setSetupSecret] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [founderInvite, setFounderInvite] = useState("");
+
+  function joinErrorMessage(code: string | undefined): string {
+    if (code === "invalid_invite") {
+      return "Need a valid invite code from a friend in the circle.";
+    }
+    if (code === "setup_required") {
+      return "To start the circle, enter your founder setup secret (or a valid invite).";
+    }
+    if (code === "setup_unavailable") {
+      return "Circle setup isn’t ready yet — try again after secrets are configured.";
+    }
+    return "Couldn’t join the circle";
+  }
 
   const isJoinPath = pathname.startsWith("/join/");
 
@@ -78,16 +92,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
     const join = await fetch("/api/circle", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ inviteCode }),
+      body: JSON.stringify({ inviteCode, setupSecret }),
     });
     const joinData = await join.json();
     setBusy(false);
     if (!join.ok) {
-      setError(
-        joinData.error === "invalid_invite"
-          ? "Need a valid invite code from a friend in the circle."
-          : "Couldn’t join the circle",
-      );
+      setError(joinErrorMessage(joinData.error));
       await refresh();
       return;
     }
@@ -95,6 +105,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       setFounderInvite(joinData.inviteUrl);
     }
     setName("");
+    setSetupSecret("");
     await refresh();
   }
 
@@ -105,17 +116,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
     const join = await fetch("/api/circle", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ inviteCode }),
+      body: JSON.stringify({ inviteCode, setupSecret }),
     });
     const joinData = await join.json();
     setBusy(false);
     if (!join.ok) {
-      setError("Need a valid invite code from a friend in the circle.");
+      setError(joinErrorMessage(joinData.error));
       return;
     }
     if (joinData.founder && joinData.inviteUrl) {
       setFounderInvite(joinData.inviteUrl);
     }
+    setSetupSecret("");
     await refresh();
   }
 
@@ -183,7 +195,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <strong>Invite-only circle</strong>
               <p>
                 Fun Peepers is a shared calendar for a couple of friends. Enter
-                your name and the invite code (or open an invite link).
+                your name and an invite code — or your founder setup secret if
+                you’re starting the circle.
               </p>
             </div>
             <input
@@ -199,8 +212,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
               className={styles.gateInput}
               value={inviteCode}
               onChange={(e) => setInviteCode(e.target.value)}
-              placeholder="Invite code (skip if you’re starting the circle)"
+              placeholder="Invite code"
               maxLength={80}
+            />
+            <input
+              className={styles.gateInput}
+              type="password"
+              value={setupSecret}
+              onChange={(e) => setSetupSecret(e.target.value)}
+              placeholder="Founder setup secret (first member only)"
+              maxLength={200}
+              autoComplete="off"
             />
             {error ? <p className={styles.gateError}>{error}</p> : null}
             <button type="submit" className={styles.gateBtn} disabled={busy}>
@@ -216,8 +238,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <div>
               <strong>Enter invite code</strong>
               <p>
-                Hi {me.name} — you need an invite from someone already in the
-                circle. If you’re the first, leave it blank to start the circle.
+                Hi {me.name} — join with an invite from someone in the circle.
+                Starting fresh? Use your founder setup secret instead.
               </p>
             </div>
             <input
@@ -226,6 +248,15 @@ export function Shell({ children }: { children: React.ReactNode }) {
               onChange={(e) => setInviteCode(e.target.value)}
               placeholder="Invite code"
               maxLength={80}
+            />
+            <input
+              className={styles.gateInput}
+              type="password"
+              value={setupSecret}
+              onChange={(e) => setSetupSecret(e.target.value)}
+              placeholder="Founder setup secret (first member only)"
+              maxLength={200}
+              autoComplete="off"
             />
             {error ? <p className={styles.gateError}>{error}</p> : null}
             <button type="submit" className={styles.gateBtn} disabled={busy}>

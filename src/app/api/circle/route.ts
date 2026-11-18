@@ -31,16 +31,20 @@ export async function GET(request: Request) {
   );
 }
 
-/** Redeem invite code (or founder bootstrap when circle is empty). */
+/** Redeem invite code, or founder setup secret when the circle is empty. */
 export async function POST(request: Request) {
   const viewer = await requireViewer(request);
   if (viewer instanceof Response) return viewer;
-  const body = await readJsonBounded<{ inviteCode?: string }>(request);
+  const body = await readJsonBounded<{
+    inviteCode?: string;
+    setupSecret?: string;
+  }>(request);
   if (body instanceof Response) return body;
 
   const result = await joinWithInvite(
     viewer.sub,
     clip(body.inviteCode, 80),
+    clip(body.setupSecret, 200),
   );
   if (!result.ok) {
     return Response.json(
