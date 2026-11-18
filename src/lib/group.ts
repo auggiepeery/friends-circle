@@ -25,12 +25,9 @@ export function secretsEqual(a: string, b: string): boolean {
   }
 }
 
-/** Bound personal secret for founder sign-in (local fallback for PGlite only). */
+/** Bound personal secret for founder sign-in — never a hardcoded fallback. */
 export function founderSetupSecret(): string {
-  const fromEnv = (process.env.FOUNDER_SETUP_SECRET || "").trim();
-  if (fromEnv) return fromEnv;
-  if (process.env.NODE_ENV === "production") return "";
-  return "local-founder-setup";
+  return (process.env.FOUNDER_SETUP_SECRET || "").trim();
 }
 
 export async function ensureDefaultCircle(): Promise<void> {
@@ -110,11 +107,19 @@ async function ensureMembership(
  * Friend sign-in by display name + real password (hashed).
  * Does not reveal whether the name exists vs bad password.
  */
+export async function getSessionVersion(userId: string): Promise<number> {
+  const rows = await sql<{ session_version: number }>(
+    `select session_version from profiles where id = $1`,
+    [userId],
+  );
+  return Number(rows[0]?.session_version ?? 0);
+}
+
 export async function signInAsFriend(
   displayName: string,
   password: string,
 ): Promise<
-  | { ok: true; userId: string; name: string }
+  | { ok: true; userId: string; name: string; sessionVersion: number }
   | { ok: false; error: string }
 > {
   await ensureDefaultCircle();
@@ -128,8 +133,9 @@ export async function signInAsFriend(
     display_name: string;
     password_hash: string;
     role: string;
+    session_version: number;
   }>(
-    `select m.user_id, p.display_name, p.password_hash, m.role
+    `select m.user_id, p.display_name, p.password_hash, m.role, p.session_version
      from circle_members m
      join profiles p on p.id = m.user_id
      where m.circle_id = $1
@@ -144,14 +150,22 @@ export async function signInAsFriend(
   }
   const ok = await verifyPassword(password, row.password_hash);
   if (!ok) return { ok: false, error: "bad_credentials" };
-  return { ok: true, userId: row.user_id, name: row.display_name };
+  return {
+    ok: true,
+    userId: row.user_id,
+    name: row.display_name,
+    sessionVersion: Number(row.session_version ?? 0),
+  };
 }
 
 /** Guest join requires a valid invite code — no open public guest access. */
 export async function signInAsGuest(
   name: string,
   inviteCode: string,
-): Promise<{ ok: true; userId: string; name: string } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; userId: string; name: string; sessionVersion: number }
+  | { ok: false; error: string }
+> {
   const display = name.trim();
   if (display.length < 2) return { ok: false, error: "name_required" };
 
@@ -170,14 +184,20 @@ export async function signInAsGuest(
     [userId, display],
   );
   await ensureMembership(userId, "guest");
-  return { ok: true, userId, name: display };
+  return { ok: true, userId, name: display, sessionVersion: 0 };
 }
 
 export async function signInAsFounder(
   password: string,
   displayName?: string,
 ): Promise<
-  | { ok: true; userId: string; name: string; founded: boolean }
+  | {
+      ok: true;
+      userId: string;
+      name: string;
+      founded: boolean;
+      sessionVersion: number;
+    }
   | { ok: false; error: string }
 > {
   const setup = founderSetupSecret();
@@ -207,7 +227,14 @@ export async function signInAsFounder(
     [FOUNDER_ID, name],
   );
   await ensureMembership(FOUNDER_ID, "founder");
-  return { ok: true, userId: FOUNDER_ID, name, founded: count === 0 };
+  const sessionVersion = await getSessionVersion(FOUNDER_ID);
+  return {
+    ok: true,
+    userId: FOUNDER_ID,
+    name,
+    founded: count === 0,
+    sessionVersion,
+  };
 }
 
 /** Add a named friend with an initial password (hashed). Only founder/friend. */
@@ -263,11 +290,24 @@ export async function changeOwnPassword(
     return { ok: false, error: "bad_password" };
   }
   const next = await hashPassword(newPassword);
-  await sql(`update profiles set password_hash = $2 where id = $1`, [
-    userId,
-    next,
-  ]);
+  await sql(
+    `update profiles
+     set password_hash = $2, session_version = session_version + 1
+     where id = $1`,
+    [userId, next],
+  );
   return { ok: true };
+}
+
+/** Rotate the guest invite code (named friends / founder only). */
+export async function rotateInviteCode(): Promise<string> {
+  await ensureDefaultCircle();
+  const code = shareToken();
+  await sql(`update circles set invite_code = $2 where id = $1`, [
+    DEFAULT_CIRCLE_ID,
+    code,
+  ]);
+  return code;
 }
 
 export async function listCircleMembers(): Promise<CircleMember[]> {

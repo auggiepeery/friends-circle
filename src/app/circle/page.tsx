@@ -120,6 +120,26 @@ export default function CirclePage() {
     setTimeout(() => setCopied(false), 1600);
   }
 
+  async function rotateInvite() {
+    setBusy(true);
+    setMessage("");
+    setError("");
+    const res = await fetch("/api/circle", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "rotate_invite" }),
+    });
+    const data = await res.json();
+    setBusy(false);
+    if (!res.ok) {
+      setError("Couldn’t rotate invite code");
+      return;
+    }
+    setInviteCode(data.inviteCode || "");
+    setInviteUrl(data.inviteUrl || "");
+    setMessage("Guest invite code rotated — old links no longer work.");
+  }
+
   if (error && members.length === 0) {
     return (
       <section className={ui.hero}>
@@ -152,6 +172,14 @@ export default function CirclePage() {
               onClick={copyInvite}
             >
               {copied ? "Copied" : "Copy guest invite link"}
+            </button>
+            <button
+              type="button"
+              className={ui.btn}
+              onClick={() => void rotateInvite()}
+              disabled={busy}
+            >
+              Rotate invite
             </button>
             <span className={ui.chip}>Code {inviteCode}</span>
           </div>

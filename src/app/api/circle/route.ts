@@ -1,11 +1,14 @@
 import { noStore, requireViewer } from "@/lib/auth";
+import { guestCookieHeader } from "@/lib/guest";
 import {
   addNamedFriend,
   changeOwnPassword,
   getInviteCode,
+  getSessionVersion,
   listCircleMembers,
   requireCircleMember,
   requireNamedMember,
+  rotateInviteCode,
 } from "@/lib/group";
 import { MAX_TITLE, clip, readJsonBounded } from "@/lib/http";
 import { clientKey, rateLimit } from "@/lib/rate-limit";
@@ -68,7 +71,32 @@ export async function POST(request: Request) {
       const status = result.error === "forbidden" ? 403 : 400;
       return Response.json({ error: result.error }, { status, headers: noStore });
     }
-    return Response.json({ ok: true }, { headers: noStore });
+    // Issue a fresh cookie with the bumped session_version; old cookies fail.
+    const sessionVersion = await getSessionVersion(viewer.sub);
+    return Response.json(
+      { ok: true },
+      {
+        headers: {
+          ...noStore,
+          "set-cookie": guestCookieHeader(viewer.sub, sessionVersion),
+        },
+      },
+    );
+  }
+
+  if (action === "rotate_invite") {
+    const named = await requireNamedMember(viewer.sub);
+    if (named !== true) return named;
+    const inviteCode = await rotateInviteCode();
+    const origin = new URL(request.url).origin;
+    return Response.json(
+      {
+        ok: true,
+        inviteCode,
+        inviteUrl: `${origin}/join/${inviteCode}`,
+      },
+      { headers: noStore },
+    );
   }
 
   if (action === "add_friend") {
