@@ -1,5 +1,6 @@
 import { canAccessPlan } from "@/lib/access";
 import { noStore, requireViewer } from "@/lib/auth";
+import { requireSameOrigin } from "@/lib/csrf";
 import { requireNamedMember } from "@/lib/group";
 import { clip, readJsonBounded } from "@/lib/http";
 import {
@@ -47,11 +48,10 @@ export async function GET(request: Request, ctx: Ctx) {
   const { plan } = auth as {
     plan: NonNullable<Awaited<ReturnType<typeof getPlan>>>;
   };
-  const origin = new URL(request.url).origin;
   const invites = await listInvitesForPlan(id);
   return Response.json(
     {
-      invites: invites.map((inv) => summarizeInviteForHost(inv, plan, origin)),
+      invites: invites.map((inv) => summarizeInviteForHost(inv, plan)),
       audience: plan.audience || "fun_peeps",
       endsAt: plan.ends_at,
       startsAt: plan.starts_at,
@@ -61,6 +61,8 @@ export async function GET(request: Request, ctx: Ctx) {
 }
 
 export async function POST(request: Request, ctx: Ctx) {
+  const csrf = requireSameOrigin(request);
+  if (csrf) return csrf;
   if (!rateLimit(clientKey(request, "guest-invite-write"), 20, 60_000)) {
     return Response.json(
       { error: "rate_limited" },
@@ -83,7 +85,6 @@ export async function POST(request: Request, ctx: Ctx) {
   if (body instanceof Response) return body;
 
   const action = clip(body.action, 32) || "create";
-  const origin = new URL(request.url).origin;
 
   if (action === "create") {
     const result = await createPlanGuestInvite({
@@ -91,23 +92,18 @@ export async function POST(request: Request, ctx: Ctx) {
       createdBy: viewer.sub,
     });
     if (!result.ok) {
-      const status =
-        result.error === "not_found"
-          ? 404
-          : result.error === "guest_audience_required" ||
-              result.error === "unscheduled" ||
-              result.error === "already_ended"
-            ? 400
-            : 400;
       return Response.json(
         { error: result.error },
-        { status, headers: noStore },
+        {
+          status: result.error === "not_found" ? 404 : 400,
+          headers: noStore,
+        },
       );
     }
     return Response.json(
       {
         ok: true,
-        invite: summarizeInviteForHost(result.invite, plan, origin),
+        invite: summarizeInviteForHost(result.invite, plan),
       },
       { status: 201, headers: noStore },
     );
@@ -128,7 +124,7 @@ export async function POST(request: Request, ctx: Ctx) {
     return Response.json(
       {
         ok: true,
-        invites: invites.map((inv) => summarizeInviteForHost(inv, plan, origin)),
+        invites: invites.map((inv) => summarizeInviteForHost(inv, plan)),
       },
       { headers: noStore },
     );

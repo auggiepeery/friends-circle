@@ -1,16 +1,13 @@
+import { randomInt } from "node:crypto";
 import { normalizeAudience } from "./audience";
 import { sql } from "./db";
-import { formatWhenRange } from "./format";
-import { id, shareToken } from "./ids";
+import { id } from "./ids";
 import { getPlan, setRsvp } from "./plans";
 import { newGuestId } from "./guest";
 import { DEFAULT_CIRCLE_ID, secretsEqual } from "./group";
 import type { Plan } from "./types";
 
-/** How long after the hang end guests can still redeem the link. */
-export const GUEST_INVITE_GRACE_MS = 2 * 60 * 60 * 1000;
-
-/** When a plan has a start but no end, treat the hang as this long. */
+/** When a plan has a start but no end, treat the hang as this long for expiry. */
 export const DEFAULT_HANG_MS = 4 * 60 * 60 * 1000;
 
 export type PlanGuestInvite = {
@@ -30,13 +27,17 @@ export type InviteLifecycle =
   | "unscheduled"
   | "missing";
 
-export type InvitePublicStatus = "ok" | "expired" | "revoked" | "invalid";
+export function isFourDigitCode(value: string): boolean {
+  return /^[0-9]{4}$/.test(value.trim());
+}
 
-/** Absolute expiry instant for a hang invite (end + grace). */
-export function inviteExpiresAt(plan: Pick<Plan, "starts_at" | "ends_at">): Date | null {
+/** Absolute expiry = hang end time (no grace). */
+export function inviteExpiresAt(
+  plan: Pick<Plan, "starts_at" | "ends_at">,
+): Date | null {
   const endMs = hangEndMs(plan);
   if (endMs == null) return null;
-  return new Date(endMs + GUEST_INVITE_GRACE_MS);
+  return new Date(endMs);
 }
 
 function hangEndMs(plan: Pick<Plan, "starts_at" | "ends_at">): number | null {
@@ -65,15 +66,6 @@ export function inviteLifecycle(
   return "active";
 }
 
-export function publicStatusFromLifecycle(
-  life: InviteLifecycle,
-): InvitePublicStatus {
-  if (life === "active") return "ok";
-  if (life === "expired") return "expired";
-  if (life === "revoked") return "revoked";
-  return "invalid";
-}
-
 export async function listInvitesForPlan(
   planId: string,
 ): Promise<PlanGuestInvite[]> {
@@ -87,33 +79,38 @@ export async function listInvitesForPlan(
   );
 }
 
-export async function getInviteByToken(
-  token: string,
+export async function getInviteByCode(
+  code: string,
 ): Promise<PlanGuestInvite | null> {
-  const trimmed = token.trim();
-  if (!trimmed) return null;
+  const trimmed = code.trim();
+  if (!isFourDigitCode(trimmed)) return null;
   const rows = await sql<PlanGuestInvite>(
     `select id, token, plan_id, created_by, created_at, revoked_at
      from plan_guest_invites
      where token = $1
+     order by created_at desc
      limit 1`,
     [trimmed],
   );
   return rows[0] ?? null;
 }
 
-/**
- * Constant-time-ish lookup: compare against stored token after fetch by exact match.
- * Token uniqueness means a miss returns null without leaking plan data.
- */
-export async function resolveInviteToken(
-  token: string,
-): Promise<{ invite: PlanGuestInvite; plan: Plan } | null> {
-  const invite = await getInviteByToken(token);
-  if (!invite || !secretsEqual(invite.token, token.trim())) return null;
-  const plan = await getPlan(invite.plan_id);
-  if (!plan) return null;
-  return { invite, plan };
+async function codeInUse(code: string): Promise<boolean> {
+  const rows = await sql<{ id: string }>(
+    `select id from plan_guest_invites
+     where token = $1 and revoked_at is null
+     limit 1`,
+    [code],
+  );
+  return Boolean(rows[0]);
+}
+
+async function allocateFourDigitCode(): Promise<string | null> {
+  for (let i = 0; i < 40; i++) {
+    const code = String(randomInt(0, 10_000)).padStart(4, "0");
+    if (!(await codeInUse(code))) return code;
+  }
+  return null;
 }
 
 export async function createPlanGuestInvite(input: {
@@ -134,7 +131,6 @@ export async function createPlanGuestInvite(input: {
     return { ok: false, error: "already_ended" };
   }
 
-  // One active link per plan — revoke prior open invites.
   await sql(
     `update plan_guest_invites
      set revoked_at = coalesce(revoked_at, now())
@@ -142,13 +138,15 @@ export async function createPlanGuestInvite(input: {
     [input.planId],
   );
 
+  const code = await allocateFourDigitCode();
+  if (!code) return { ok: false, error: "code_unavailable" };
+
   const inviteId = id("pgi");
-  const token = shareToken();
   const rows = await sql<PlanGuestInvite>(
     `insert into plan_guest_invites (id, token, plan_id, created_by)
      values ($1, $2, $3, $4)
      returning id, token, plan_id, created_by, created_at, revoked_at`,
-    [inviteId, token, input.planId, input.createdBy],
+    [inviteId, code, input.planId, input.createdBy],
   );
   return {
     ok: true,
@@ -181,45 +179,35 @@ export async function revokePlanGuestInvite(input: {
   return { ok: true };
 }
 
-export type HangPreview =
-  | {
-      status: "ok";
-      title: string;
-      whenLabel: string | null;
-      expiresAt: string;
-    }
-  | { status: Exclude<InvitePublicStatus, "ok"> };
-
-/** Public preview — never returns circle/member data on failure. */
-export async function previewHangInvite(token: string): Promise<HangPreview> {
-  const resolved = await resolveInviteToken(token);
-  if (!resolved) return { status: "invalid" };
-  const life = inviteLifecycle(resolved.invite, resolved.plan);
-  const status = publicStatusFromLifecycle(life);
-  if (status !== "ok") return { status };
-  const expires = inviteExpiresAt(resolved.plan)!;
-  return {
-    status: "ok",
-    title: resolved.plan.title,
-    whenLabel: formatWhenRange(resolved.plan.starts_at, resolved.plan.ends_at),
-    expiresAt: expires.toISOString(),
-  };
-}
-
-/** Redeem a hang invite as a guest; auto-RSVP going on that plan. */
-export async function redeemHangInvite(
+/**
+ * Redeem a 4-digit hang code as a guest (same sign-in path as circle invite).
+ * Does not leak plan/circle details on failure.
+ */
+export async function redeemHangCode(
   name: string,
-  token: string,
+  code: string,
 ): Promise<
-  | { ok: true; userId: string; name: string; planId: string; sessionVersion: number }
+  | {
+      ok: true;
+      userId: string;
+      name: string;
+      planId: string;
+      sessionVersion: number;
+    }
   | { ok: false; error: string }
 > {
   const display = name.trim();
   if (display.length < 2) return { ok: false, error: "name_required" };
+  if (!isFourDigitCode(code)) return { ok: false, error: "invalid_invite" };
 
-  const resolved = await resolveInviteToken(token);
-  if (!resolved) return { ok: false, error: "invalid_invite" };
-  const life = inviteLifecycle(resolved.invite, resolved.plan);
+  const invite = await getInviteByCode(code);
+  if (!invite || !secretsEqual(invite.token, code.trim())) {
+    return { ok: false, error: "invalid_invite" };
+  }
+  const plan = await getPlan(invite.plan_id);
+  if (!plan) return { ok: false, error: "invalid_invite" };
+
+  const life = inviteLifecycle(invite, plan);
   if (life === "expired") return { ok: false, error: "expired" };
   if (life === "revoked") return { ok: false, error: "revoked" };
   if (life !== "active") return { ok: false, error: "invalid_invite" };
@@ -237,27 +225,22 @@ export async function redeemHangInvite(
      on conflict (circle_id, user_id) do update set role = 'guest'`,
     [DEFAULT_CIRCLE_ID, userId],
   );
-  await setRsvp(resolved.plan.id, userId, "going");
+  await setRsvp(plan.id, userId, "going");
   return {
     ok: true,
     userId,
     name: display,
-    planId: resolved.plan.id,
+    planId: plan.id,
     sessionVersion: 0,
   };
-}
-
-export function inviteUrlFor(origin: string, token: string): string {
-  return `${origin}/hang/${encodeURIComponent(token)}`;
 }
 
 export function summarizeInviteForHost(
   invite: PlanGuestInvite,
   plan: Plan,
-  origin: string,
 ): {
   id: string;
-  url: string;
+  code: string;
   status: InviteLifecycle;
   expiresAt: string | null;
   createdAt: string;
@@ -266,7 +249,7 @@ export function summarizeInviteForHost(
   const expires = inviteExpiresAt(plan);
   return {
     id: invite.id,
-    url: inviteUrlFor(origin, invite.token),
+    code: invite.token,
     status: inviteLifecycle(invite, plan),
     expiresAt: expires ? expires.toISOString() : null,
     createdAt: invite.created_at,

@@ -109,7 +109,12 @@ export async function POST(request: Request) {
   if (mode === "guest") {
     const result = await signInAsGuest(name, clip(body.inviteCode, 80));
     if (!result.ok) {
-      const status = result.error === "name_required" ? 400 : 403;
+      const status =
+        result.error === "name_required"
+          ? 400
+          : result.error === "expired" || result.error === "revoked"
+            ? 410
+            : 403;
       return Response.json(
         { error: result.error },
         { status, headers: noStore },
@@ -125,6 +130,7 @@ export async function POST(request: Request) {
           via: "guest",
           member: true,
         },
+        ...(result.planId ? { planId: result.planId } : {}),
       },
       {
         status: 201,

@@ -118,9 +118,9 @@ export default function CirclePage() {
           The circle
         </h1>
         <p className={ui.lede}>
-          Friends sign in with their own password. Guests need this circle invite
-          code, or a hang invite from a Guest plan (expires after that hang).
-          Profile, password, and theme live in{" "}
+          Friends sign in with their own password. Guests use this circle invite
+          code, or a 4-digit hang code from a Guest plan (expires when that hang
+          ends). Profile, password, and theme live in{" "}
           <Link href="/settings" style={{ color: "var(--lamp-hot)" }}>
             Settings
           </Link>
