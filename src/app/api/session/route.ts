@@ -94,7 +94,10 @@ export async function POST(request: Request) {
       {
         headers: {
           ...noStore,
-          "set-cookie": guestCookieHeader(result.userId),
+          "set-cookie": guestCookieHeader(
+            result.userId,
+            result.sessionVersion,
+          ),
         },
       },
     );
@@ -124,7 +127,10 @@ export async function POST(request: Request) {
         status: 201,
         headers: {
           ...noStore,
-          "set-cookie": guestCookieHeader(result.userId),
+          "set-cookie": guestCookieHeader(
+            result.userId,
+            result.sessionVersion,
+          ),
         },
       },
     );
@@ -153,7 +159,10 @@ export async function POST(request: Request) {
       {
         headers: {
           ...noStore,
-          "set-cookie": guestCookieHeader(result.userId),
+          "set-cookie": guestCookieHeader(
+            result.userId,
+            result.sessionVersion,
+          ),
         },
       },
     );

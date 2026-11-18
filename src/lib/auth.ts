@@ -1,7 +1,8 @@
 import { getIdentity, type VerifiedIdentity } from "../../cursor/identity";
 import { sql } from "./db";
 import { getProfile } from "./plans";
-import { readGuestId } from "./guest";
+import { readGuestSession } from "./guest";
+import { getSessionVersion } from "./group";
 
 export type Viewer = {
   sub: string;
@@ -20,16 +21,21 @@ function viaForId(id: string): "guest" | "friend" {
 
 /** Prefer signed picker/guest cookie; Cursor identity is a local fallback only. */
 export async function optionalViewer(request: Request): Promise<Viewer | null> {
-  const sessionId = readGuestId(request);
-  if (sessionId) {
-    const profile = await getProfile(sessionId);
+  const session = readGuestSession(request);
+  if (session) {
+    const currentVersion = await getSessionVersion(session.sessionId);
+    if (currentVersion !== session.sessionVersion) {
+      // Password change (or other bump) revoked this cookie.
+      return null;
+    }
+    const profile = await getProfile(session.sessionId);
     return {
-      sub: sessionId,
+      sub: session.sessionId,
       email: profile?.email || "",
       name: profile?.display_name || "Friend",
       simulated: false,
       kind: "person",
-      via: viaForId(sessionId),
+      via: viaForId(session.sessionId),
     };
   }
 
