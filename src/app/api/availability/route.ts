@@ -1,11 +1,18 @@
 import { noStore, requireViewer } from "@/lib/auth";
 import { getDayAvailability } from "@/lib/availability";
 import { memberRole, requireCircleMember } from "@/lib/group";
+import { clientKey, rateLimit } from "@/lib/rate-limit";
 import { hasRoutines } from "@/lib/routines";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
+  if (!rateLimit(clientKey(request, "availability-read"), 90, 60_000)) {
+    return Response.json(
+      { error: "rate_limited" },
+      { status: 429, headers: noStore },
+    );
+  }
   const viewer = await requireViewer(request);
   if (viewer instanceof Response) return viewer;
   const gate = await requireCircleMember(viewer.sub);

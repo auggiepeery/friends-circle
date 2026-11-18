@@ -1,8 +1,10 @@
 import { noStore, requireViewer } from "@/lib/auth";
+import { requireSameOrigin } from "@/lib/csrf";
 import { requireCircleMember } from "@/lib/group";
 import { readJsonBounded } from "@/lib/http";
 import { getUiPrefs, setUiPrefs } from "@/lib/prefs-server";
 import { type ClientPrefs, normalizePrefs } from "@/lib/prefs-shared";
+import { clientKey, rateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,14 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const csrf = requireSameOrigin(request);
+  if (csrf) return csrf;
+  if (!rateLimit(clientKey(request, "prefs-write"), 30, 60_000)) {
+    return Response.json(
+      { error: "rate_limited" },
+      { status: 429, headers: noStore },
+    );
+  }
   const viewer = await requireViewer(request);
   if (viewer instanceof Response) return viewer;
   const gate = await requireCircleMember(viewer.sub);

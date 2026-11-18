@@ -1,6 +1,8 @@
 import { noStore, requireViewer } from "@/lib/auth";
+import { requireSameOrigin } from "@/lib/csrf";
 import { requireCircleMember } from "@/lib/group";
 import { clip, readJsonBounded } from "@/lib/http";
+import { clientKey, rateLimit } from "@/lib/rate-limit";
 import {
   MAX_ROUTINE_LABEL,
   createRoutine,
@@ -12,6 +14,18 @@ import {
 } from "@/lib/routines";
 
 export const dynamic = "force-dynamic";
+
+function guardWrite(request: Request): Response | null {
+  const csrf = requireSameOrigin(request);
+  if (csrf) return csrf;
+  if (!rateLimit(clientKey(request, "routines-write"), 40, 60_000)) {
+    return Response.json(
+      { error: "rate_limited" },
+      { status: 429, headers: noStore },
+    );
+  }
+  return null;
+}
 
 export async function GET(request: Request) {
   const viewer = await requireViewer(request);
@@ -32,6 +46,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const blocked = guardWrite(request);
+  if (blocked) return blocked;
   const viewer = await requireViewer(request);
   if (viewer instanceof Response) return viewer;
   const gate = await requireCircleMember(viewer.sub);
@@ -67,6 +83,8 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const blocked = guardWrite(request);
+  if (blocked) return blocked;
   const viewer = await requireViewer(request);
   if (viewer instanceof Response) return viewer;
   const gate = await requireCircleMember(viewer.sub);
@@ -113,6 +131,8 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const blocked = guardWrite(request);
+  if (blocked) return blocked;
   const viewer = await requireViewer(request);
   if (viewer instanceof Response) return viewer;
   const gate = await requireCircleMember(viewer.sub);
