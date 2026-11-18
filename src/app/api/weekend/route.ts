@@ -9,6 +9,13 @@ export async function GET(request: Request) {
   if (viewer instanceof Response) return viewer;
   const gate = await requireCircleMember(viewer.sub);
   if (gate !== true) return gate;
-  const plans = await listWeekendForUser(viewer.sub);
-  return Response.json({ plans }, { headers: noStore });
+  try {
+    const plans = await listWeekendForUser(viewer.sub);
+    return Response.json({ plans }, { headers: noStore });
+  } catch {
+    return Response.json(
+      { error: "calendar_failed" },
+      { status: 500, headers: noStore },
+    );
+  }
 }
