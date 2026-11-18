@@ -3,6 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import {
+  PREFS_EVENT,
+  applyPrefsToDocument,
+  readPrefs,
+} from "@/lib/prefs";
 import styles from "./Shell.module.css";
 
 type Me = {
@@ -28,6 +33,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [inviteCode, setInviteCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [showUnreadBadge, setShowUnreadBadge] = useState(true);
 
   async function refresh() {
     const data = await fetch("/api/me").then((r) => r.json());
@@ -35,6 +41,22 @@ export function Shell({ children }: { children: React.ReactNode }) {
     setLoaded(true);
     return data.viewer as Me | null;
   }
+
+  useEffect(() => {
+    applyPrefsToDocument();
+    const sync = () => {
+      const prefs = readPrefs();
+      applyPrefsToDocument(prefs);
+      setShowUnreadBadge(prefs.showUnreadBadge);
+    };
+    sync();
+    window.addEventListener(PREFS_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(PREFS_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -70,7 +92,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     }
     if (code === "name_required") return "Enter a name (at least 2 characters).";
     if (code === "setup_unavailable") {
-      return "Founder setup isn’t ready yet — add the founder secret first.";
+      return "Auggie setup isn’t ready yet — add the setup secret first.";
     }
     if (code === "rate_limited") return "Too many tries — wait a minute.";
     return "Couldn’t sign in";
@@ -141,12 +163,15 @@ export function Shell({ children }: { children: React.ReactNode }) {
             </Link>
             <Link href="/notifications" data-active={active("/notifications")}>
               Alerts
-              {me && me.unread > 0 ? (
+              {me && showUnreadBadge && me.unread > 0 ? (
                 <span className={styles.badge}>{me.unread}</span>
               ) : null}
             </Link>
             <Link href="/plans/new" data-active={active("/plans/new")}>
               Add plan
+            </Link>
+            <Link href="/settings" data-active={active("/settings")}>
+              Settings
             </Link>
             <span className={styles.who}>
               {me?.name}
@@ -163,7 +188,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <strong>Who’s peeping?</strong>
               <p>
                 Friends sign in with their name and password. Guests need an
-                invite code. Founder uses the setup secret.
+                invite code. Auggie uses the setup secret.
               </p>
             </div>
             <label className={styles.gateLabel}>
@@ -176,7 +201,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 {!empty ? <option value="friend">Friend</option> : null}
                 {!empty ? <option value="guest">Guest (invite)</option> : null}
                 {founderAvailable ? (
-                  <option value="founder">Founder</option>
+                  <option value="founder">Auggie</option>
                 ) : null}
               </select>
             </label>
@@ -209,7 +234,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={
-                  mode === "founder" ? "Founder password" : "Password"
+                  mode === "founder" ? "Auggie password" : "Password"
                 }
                 required
                 minLength={mode === "friend" ? 4 : undefined}
@@ -254,6 +279,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </Link>
           <Link href="/notifications" data-active={active("/notifications")}>
             Alerts
+          </Link>
+          <Link href="/settings" data-active={active("/settings")}>
+            Set
           </Link>
         </nav>
       ) : null}

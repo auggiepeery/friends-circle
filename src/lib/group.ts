@@ -211,10 +211,10 @@ export async function signInAsFounder(
     `select display_name from profiles where id = $1`,
     [FOUNDER_ID],
   );
-  const name =
-    (displayName || "").trim() ||
-    existing[0]?.display_name ||
-    "Founder";
+  const existingName = existing[0]?.display_name?.trim() || "";
+  const remapped =
+    !existingName || existingName === "Founder" ? "Auggie" : existingName;
+  const name = (displayName || "").trim() || remapped;
 
   await sql(
     `insert into profiles (id, email, display_name, password_hash)
@@ -297,6 +297,38 @@ export async function changeOwnPassword(
     [userId, next],
   );
   return { ok: true };
+}
+
+/** Update own display name; must stay unique among named members. */
+export async function updateDisplayName(
+  userId: string,
+  displayName: string,
+): Promise<
+  | { ok: true; name: string }
+  | { ok: false; error: string }
+> {
+  const name = displayName.trim();
+  if (name.length < 2) return { ok: false, error: "name_required" };
+  if (name.length > 120) return { ok: false, error: "name_too_long" };
+
+  const dup = await sql<{ user_id: string }>(
+    `select m.user_id
+     from circle_members m
+     join profiles p on p.id = m.user_id
+     where m.circle_id = $1
+       and m.role in ('friend', 'founder')
+       and p.display_name = $2
+       and m.user_id <> $3
+     limit 1`,
+    [DEFAULT_CIRCLE_ID, name, userId],
+  );
+  if (dup[0]) return { ok: false, error: "name_taken" };
+
+  await sql(`update profiles set display_name = $2 where id = $1`, [
+    userId,
+    name,
+  ]);
+  return { ok: true, name };
 }
 
 /** Rotate the guest invite code (named friends / founder only). */

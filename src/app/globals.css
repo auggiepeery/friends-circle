@@ -1,4 +1,5 @@
-:root {
+:root,
+html[data-theme="night"] {
   --ink: #07161c;
   --ink-soft: #0d2430;
   --lagoon: #1fa6a0;
@@ -15,6 +16,48 @@
   --font-display: var(--font-syne), "Syne", sans-serif;
   --font-body: var(--font-manrope), "Manrope", sans-serif;
   --shadow-glow: 0 0 80px rgba(31, 166, 160, 0.18);
+  --chrome: rgba(7, 22, 28, 0.55);
+  --atmosphere-a: rgba(31, 166, 160, 0.28);
+  --atmosphere-b: rgba(232, 184, 109, 0.16);
+  --atmosphere-c: rgba(14, 111, 107, 0.35);
+  --atmosphere-base: linear-gradient(165deg, #07161c 0%, #0a1f28 45%, #0d2430 100%);
+}
+
+html[data-theme="dusk"] {
+  --ink: #1a1014;
+  --ink-soft: #2a1820;
+  --lagoon: #d4784a;
+  --lagoon-deep: #a34f2c;
+  --lamp: #f0c98a;
+  --lamp-hot: #ffe0a8;
+  --mist: rgba(255, 240, 230, 0.9);
+  --mist-dim: rgba(230, 200, 180, 0.58);
+  --line: rgba(255, 220, 200, 0.16);
+  --chrome: rgba(26, 16, 20, 0.6);
+  --atmosphere-a: rgba(212, 120, 74, 0.28);
+  --atmosphere-b: rgba(240, 201, 138, 0.18);
+  --atmosphere-c: rgba(120, 40, 55, 0.32);
+  --atmosphere-base: linear-gradient(165deg, #1a1014 0%, #24141c 45%, #2a1820 100%);
+}
+
+html[data-theme="day"] {
+  --ink: #e8f4f1;
+  --ink-soft: #d5ebe6;
+  --lagoon: #0e7f7a;
+  --lagoon-deep: #0a5c58;
+  --lamp: #b88737;
+  --lamp-hot: #8a5a1f;
+  --mist: rgba(8, 32, 36, 0.92);
+  --mist-dim: rgba(20, 55, 58, 0.62);
+  --line: rgba(8, 40, 42, 0.12);
+  --danger: #c04a3c;
+  --ok: #2f8f4e;
+  --chrome: rgba(232, 244, 241, 0.72);
+  --atmosphere-a: rgba(14, 127, 122, 0.18);
+  --atmosphere-b: rgba(184, 135, 55, 0.14);
+  --atmosphere-c: rgba(120, 180, 170, 0.22);
+  --atmosphere-base: linear-gradient(165deg, #e8f4f1 0%, #dceee9 45%, #d0e6e2 100%);
+  --shadow-glow: 0 0 60px rgba(14, 127, 122, 0.12);
 }
 
 * {
@@ -65,10 +108,10 @@ button {
   inset: 0;
   z-index: -2;
   background:
-    radial-gradient(1200px 700px at 12% -10%, rgba(31, 166, 160, 0.28), transparent 55%),
-    radial-gradient(900px 600px at 88% 8%, rgba(232, 184, 109, 0.16), transparent 50%),
-    radial-gradient(700px 500px at 50% 100%, rgba(14, 111, 107, 0.35), transparent 60%),
-    linear-gradient(165deg, #07161c 0%, #0a1f28 45%, #0d2430 100%);
+    radial-gradient(1200px 700px at 12% -10%, var(--atmosphere-a), transparent 55%),
+    radial-gradient(900px 600px at 88% 8%, var(--atmosphere-b), transparent 50%),
+    radial-gradient(700px 500px at 50% 100%, var(--atmosphere-c), transparent 60%),
+    var(--atmosphere-base);
 }
 
 .atmosphere::before {
@@ -163,4 +206,11 @@ button {
 }
 .rise-delay-3 {
   animation-delay: 0.24s;
+}
+
+html[data-reduce-motion="true"] *,
+html[data-reduce-motion="true"] *::before,
+html[data-reduce-motion="true"] *::after {
+  animation: none !important;
+  transition: none !important;
 }

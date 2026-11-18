@@ -1,5 +1,6 @@
 import { canAccessPlan, planForViewer } from "@/lib/access";
 import { noStore, requireViewer } from "@/lib/auth";
+import { memberRole } from "@/lib/group";
 import {
   MAX_PLACE,
   MAX_POLL_OPTIONS,
@@ -13,6 +14,7 @@ import {
   addComment,
   addExpense,
   createPoll,
+  deletePlan,
   getPlan,
   listComments,
   listExpenses,
@@ -75,6 +77,33 @@ export async function GET(request: Request, ctx: Ctx) {
     },
     { headers: noStore },
   );
+}
+
+export async function DELETE(request: Request, ctx: Ctx) {
+  const { id } = await ctx.params;
+  const auth = await loadAuthorizedPlan(request, id);
+  if ("error" in auth && auth.error) return auth.error;
+  const { viewer, plan } = auth as {
+    viewer: { sub: string; name: string };
+    plan: NonNullable<Awaited<ReturnType<typeof getPlan>>>;
+  };
+  const role = await memberRole(viewer.sub);
+  const canDelete =
+    plan.creator_id === viewer.sub || role === "founder";
+  if (!canDelete) {
+    return Response.json(
+      { error: "forbidden" },
+      { status: 403, headers: noStore },
+    );
+  }
+  const ok = await deletePlan(id);
+  if (!ok) {
+    return Response.json(
+      { error: "not_found" },
+      { status: 404, headers: noStore },
+    );
+  }
+  return Response.json({ ok: true }, { headers: noStore });
 }
 
 export async function PATCH(request: Request, ctx: Ctx) {
