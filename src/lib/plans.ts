@@ -125,8 +125,8 @@ export async function listPlansInRange(
        )
        and ${audienceFilterSql("p", "$1")}
        and p.starts_at is not null
-       and p.starts_at >= $2::timestamptz
        and p.starts_at < $3::timestamptz
+       and coalesce(p.ends_at, p.starts_at) >= $2::timestamptz
      order by p.starts_at asc
      limit 200`,
     [userId, rangeStart, rangeEnd, DEFAULT_CIRCLE_ID],
