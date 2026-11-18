@@ -1,4 +1,5 @@
 import { canAccessPlan, planForViewer } from "@/lib/access";
+import { isPlanAudience } from "@/lib/audience";
 import { noStore, requireViewer } from "@/lib/auth";
 import { requireSameOrigin } from "@/lib/csrf";
 import { memberRole } from "@/lib/group";
@@ -167,6 +168,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
         ? clip(body.recurringRule, 32)
         : undefined,
     status: typeof body.status === "string" ? clip(body.status, 32) : undefined,
+    audience: isPlanAudience(body.audience) ? body.audience : undefined,
   });
   return Response.json(
     { plan: updated ? planForViewer(updated) : null },
