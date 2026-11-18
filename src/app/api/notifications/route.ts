@@ -1,5 +1,6 @@
 import { noStore, requireViewer } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { requireCircleMember } from "@/lib/group";
 import { clip, readJsonBounded } from "@/lib/http";
 import type { Notification } from "@/lib/types";
 
@@ -8,6 +9,8 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const viewer = await requireViewer(request);
   if (viewer instanceof Response) return viewer;
+  const gate = await requireCircleMember(viewer.sub);
+  if (gate !== true) return gate;
   const notifications = await sql<Notification>(
     `select * from notifications
      where user_id = $1
@@ -21,6 +24,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const viewer = await requireViewer(request);
   if (viewer instanceof Response) return viewer;
+  const gate = await requireCircleMember(viewer.sub);
+  if (gate !== true) return gate;
   const body = await readJsonBounded<{ action?: string; id?: string }>(request);
   if (body instanceof Response) return body;
   if (body.action === "read_all") {

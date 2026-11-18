@@ -4,7 +4,7 @@ import {
   guestCookieHeader,
   newGuestId,
 } from "@/lib/guest";
-import { joinDefaultCircle } from "@/lib/group";
+import { isCircleMember } from "@/lib/group";
 import { MAX_TITLE, clip, readJsonBounded } from "@/lib/http";
 import { sql } from "@/lib/db";
 
@@ -12,23 +12,26 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const viewer = await optionalViewer(request);
+  if (!viewer) {
+    return Response.json({ viewer: null }, { headers: noStore });
+  }
+  const member = await isCircleMember(viewer.sub);
   return Response.json(
     {
-      viewer: viewer
-        ? {
-            sub: viewer.sub,
-            name: viewer.name,
-            email: viewer.email,
-            simulated: viewer.simulated,
-            via: viewer.via,
-          }
-        : null,
+      viewer: {
+        sub: viewer.sub,
+        name: viewer.name,
+        email: viewer.email,
+        simulated: viewer.simulated,
+        via: viewer.via,
+        member,
+      },
     },
     { headers: noStore },
   );
 }
 
-/** Public friend sign-in: pick a display name; cookie-bound guest profile. */
+/** Display-name session only — does not grant calendar access. */
 export async function POST(request: Request) {
   const body = await readJsonBounded<{
     action?: string;
@@ -58,6 +61,7 @@ export async function POST(request: Request) {
 
   const existing = await optionalViewer(request);
   if (existing?.via === "cursor") {
+    const member = await isCircleMember(existing.sub);
     return Response.json(
       {
         viewer: {
@@ -66,6 +70,7 @@ export async function POST(request: Request) {
           email: existing.email,
           simulated: existing.simulated,
           via: existing.via,
+          member,
         },
       },
       { headers: noStore },
@@ -79,7 +84,7 @@ export async function POST(request: Request) {
      on conflict (id) do update set display_name = excluded.display_name`,
     [guestId, name],
   );
-  await joinDefaultCircle(guestId);
+  const member = await isCircleMember(guestId);
 
   return Response.json(
     {
@@ -89,6 +94,7 @@ export async function POST(request: Request) {
         email: "",
         simulated: false,
         via: "guest",
+        member,
       },
     },
     {

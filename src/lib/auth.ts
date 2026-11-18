@@ -1,6 +1,5 @@
 import { getIdentity, type VerifiedIdentity } from "../../cursor/identity";
 import { sql } from "./db";
-import { joinDefaultCircle } from "./group";
 import { getProfile } from "./plans";
 import { readGuestId } from "./guest";
 
@@ -15,12 +14,12 @@ export type Viewer = {
 
 export const noStore = { "cache-control": "private, no-store" } as const;
 
+/** Identity only — does NOT auto-join the shared circle. */
 export async function optionalViewer(request: Request): Promise<Viewer | null> {
   const identity = await getIdentity(request);
   if (identity.verified && identity.kind === "person") {
     const viewer = toViewer(identity);
     await ensureProfile(viewer);
-    await joinDefaultCircle(viewer.sub);
     return viewer;
   }
 
@@ -28,7 +27,6 @@ export async function optionalViewer(request: Request): Promise<Viewer | null> {
   if (!guestId) return null;
   const profile = await getProfile(guestId);
   if (!profile) return null;
-  await joinDefaultCircle(profile.id);
   return {
     sub: profile.id,
     email: profile.email || "",

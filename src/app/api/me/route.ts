@@ -1,5 +1,6 @@
 import { noStore, optionalViewer, requireViewer } from "@/lib/auth";
 import { setAvailability } from "@/lib/friends";
+import { isCircleMember, requireCircleMember } from "@/lib/group";
 import { MAX_HINT, clip, readJsonBounded } from "@/lib/http";
 import { getProfile } from "@/lib/plans";
 import { sql } from "@/lib/db";
@@ -12,10 +13,13 @@ export async function GET(request: Request) {
     return Response.json({ viewer: null }, { headers: noStore });
   }
   const profile = await getProfile(viewer.sub);
-  const unread = await sql<{ count: number }>(
-    `select count(*)::int as count from notifications where user_id = $1 and read = false`,
-    [viewer.sub],
-  );
+  const member = await isCircleMember(viewer.sub);
+  const unread = member
+    ? await sql<{ count: number }>(
+        `select count(*)::int as count from notifications where user_id = $1 and read = false`,
+        [viewer.sub],
+      )
+    : [{ count: 0 }];
   return Response.json(
     {
       viewer: {
@@ -24,6 +28,7 @@ export async function GET(request: Request) {
         email: viewer.email,
         simulated: viewer.simulated,
         via: viewer.via,
+        member,
         availability_hint: profile?.availability_hint ?? "",
         unread: unread[0]?.count ?? 0,
       },
@@ -35,6 +40,8 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   const viewer = await requireViewer(request);
   if (viewer instanceof Response) return viewer;
+  const gate = await requireCircleMember(viewer.sub);
+  if (gate !== true) return gate;
   const body = await readJsonBounded<{ availability_hint?: string }>(request);
   if (body instanceof Response) return body;
   if (typeof body.availability_hint === "string") {

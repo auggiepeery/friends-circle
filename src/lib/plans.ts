@@ -1,5 +1,5 @@
 import { sql } from "./db";
-import { DEFAULT_CIRCLE_ID, joinDefaultCircle } from "./group";
+import { DEFAULT_CIRCLE_ID } from "./group";
 import { id, shareToken } from "./ids";
 import type {
   Comment,
@@ -24,9 +24,8 @@ const PLAN_SELECT = `p.id, p.creator_id, p.circle_id, p.title, p.description, p.
        (select count(*)::int from plan_rsvps r where r.plan_id = p.id and r.response = 'going') as going_count,
        (select pr.display_name from profiles pr where pr.id = p.creator_id) as creator_name`;
 
-/** Shared circle calendar: every member sees every open plan. */
+/** Shared circle calendar: every member sees every open plan. Caller must be a member. */
 export async function listUpcomingForUser(userId: string): Promise<PlanListRow[]> {
-  await joinDefaultCircle(userId);
   return sql(
     `select ${PLAN_SELECT}
      from plans p
@@ -48,7 +47,6 @@ export async function listPlansInRange(
   rangeStart: string,
   rangeEnd: string,
 ): Promise<PlanListRow[]> {
-  await joinDefaultCircle(userId);
   return sql(
     `select ${PLAN_SELECT}
      from plans p
@@ -105,7 +103,6 @@ export async function createPlan(input: {
   reminderAt?: string | null;
   recurringRule?: string;
 }): Promise<Plan> {
-  await joinDefaultCircle(input.creatorId);
   const planId = id("plan");
   const token = shareToken();
   const rows = await sql<Plan>(

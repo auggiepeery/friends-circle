@@ -91,8 +91,8 @@ export function CalendarBoard() {
     <section className={`${styles.hero} rise`}>
       <h1 className={styles.brand}>Fun Peepers</h1>
       <p className={`${styles.lede} rise rise-delay-1`}>
-        Your circle’s shared calendar — every plan shows up for everyone. RSVP,
-        chat, and poll right on the hang.
+        Invite-only shared calendar — everyone in the circle sees every plan.
+        RSVP, chat, and poll right on the hang.
       </p>
 
       <div className={`${styles.toolbar} rise rise-delay-2`}>
