@@ -1,11 +1,14 @@
 import { noStore, requireViewer } from "@/lib/auth";
 import {
   addNamedFriend,
+  changeOwnPassword,
   getInviteCode,
   listCircleMembers,
   requireCircleMember,
+  requireNamedMember,
 } from "@/lib/group";
 import { MAX_TITLE, clip, readJsonBounded } from "@/lib/http";
+import { clientKey, rateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -16,47 +19,84 @@ export async function GET(request: Request) {
   if (gate !== true) return gate;
 
   const members = await listCircleMembers();
-  const inviteCode = await getInviteCode();
+  const named = await requireNamedMember(viewer.sub);
+  const inviteCode = named === true ? await getInviteCode() : "";
   const origin = new URL(request.url).origin;
   return Response.json(
     {
       circle: { id: "circle_default", name: "Fun Peepers" },
       members,
       inviteCode,
-      inviteUrl: `${origin}/join/${inviteCode}`,
+      inviteUrl: inviteCode ? `${origin}/join/${inviteCode}` : "",
+      canManage: named === true,
     },
     { headers: noStore },
   );
 }
 
-/** Add a named friend to the sign-in picker (password = their display name). */
 export async function POST(request: Request) {
+  if (!rateLimit(clientKey(request, "circle-write"), 30, 60_000)) {
+    return Response.json(
+      { error: "rate_limited" },
+      { status: 429, headers: noStore },
+    );
+  }
+
   const viewer = await requireViewer(request);
   if (viewer instanceof Response) return viewer;
   const gate = await requireCircleMember(viewer.sub);
   if (gate !== true) return gate;
 
-  const body = await readJsonBounded<{ name?: string; action?: string }>(
-    request,
-  );
+  const body = await readJsonBounded<{
+    action?: string;
+    name?: string;
+    password?: string;
+    currentPassword?: string;
+    newPassword?: string;
+  }>(request);
   if (body instanceof Response) return body;
 
   const action = body.action || "add_friend";
-  if (action !== "add_friend") {
+
+  if (action === "change_password") {
+    const result = await changeOwnPassword(
+      viewer.sub,
+      clip(body.currentPassword, 200),
+      clip(body.newPassword, 200),
+    );
+    if (!result.ok) {
+      const status = result.error === "forbidden" ? 403 : 400;
+      return Response.json({ error: result.error }, { status, headers: noStore });
+    }
+    return Response.json({ ok: true }, { headers: noStore });
+  }
+
+  if (action === "add_friend") {
+    const named = await requireNamedMember(viewer.sub);
+    if (named !== true) return named;
+
+    const result = await addNamedFriend(
+      clip(body.name, MAX_TITLE),
+      clip(body.password, 200),
+    );
+    if (!result.ok) {
+      const status =
+        result.error === "name_taken"
+          ? 409
+          : result.error === "password_short"
+            ? 400
+            : 400;
+      return Response.json({ error: result.error }, { status, headers: noStore });
+    }
+
     return Response.json(
-      { error: "unsupported" },
-      { status: 400, headers: noStore },
+      { ok: true, friend: { id: result.id, name: result.name } },
+      { status: 201, headers: noStore },
     );
   }
 
-  const result = await addNamedFriend(clip(body.name, MAX_TITLE));
-  if (!result.ok) {
-    const status = result.error === "name_taken" ? 409 : 400;
-    return Response.json({ error: result.error }, { status, headers: noStore });
-  }
-
   return Response.json(
-    { ok: true, friend: { id: result.id, name: result.name } },
-    { status: 201, headers: noStore },
+    { error: "unsupported" },
+    { status: 400, headers: noStore },
   );
 }

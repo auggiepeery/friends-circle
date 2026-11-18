@@ -12,11 +12,18 @@ type Member = {
 
 export default function CirclePage() {
   const [members, setMembers] = useState<Member[]>([]);
+  const [inviteUrl, setInviteUrl] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
+  const [canManage, setCanManage] = useState(false);
   const [hint, setHint] = useState("");
   const [newFriend, setNewFriend] = useState("");
+  const [friendPassword, setFriendPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
 
   async function load() {
     const [circle, me] = await Promise.all([
@@ -27,6 +34,9 @@ export default function CirclePage() {
       fetch("/api/me").then((r) => r.json()),
     ]);
     setMembers(circle.members || []);
+    setInviteUrl(circle.inviteUrl || "");
+    setInviteCode(circle.inviteCode || "");
+    setCanManage(Boolean(circle.canManage));
     if (me.viewer?.availability_hint) setHint(me.viewer.availability_hint);
   }
 
@@ -50,23 +60,64 @@ export default function CirclePage() {
     const res = await fetch("/api/circle", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "add_friend", name: newFriend }),
+      body: JSON.stringify({
+        action: "add_friend",
+        name: newFriend,
+        password: friendPassword,
+      }),
     });
     const data = await res.json();
     setBusy(false);
     if (!res.ok) {
       setError(
         data.error === "name_taken"
-          ? "That name is already on the list."
-          : "Couldn’t add friend",
+          ? "That name is already taken."
+          : data.error === "password_short"
+            ? "Password must be at least 6 characters."
+            : "Couldn’t add friend",
       );
       return;
     }
-    setMessage(
-      `Added ${data.friend.name} — their password is exactly that name.`,
-    );
+    setMessage(`Added ${data.friend.name}. Share their password privately.`);
     setNewFriend("");
+    setFriendPassword("");
     await load();
+  }
+
+  async function changePassword(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setMessage("");
+    setError("");
+    const res = await fetch("/api/circle", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "change_password",
+        currentPassword,
+        newPassword,
+      }),
+    });
+    const data = await res.json();
+    setBusy(false);
+    if (!res.ok) {
+      setError(
+        data.error === "bad_password"
+          ? "Current password is wrong."
+          : "Couldn’t change password",
+      );
+      return;
+    }
+    setMessage("Password updated.");
+    setCurrentPassword("");
+    setNewPassword("");
+  }
+
+  function copyInvite() {
+    if (!inviteUrl) return;
+    void navigator.clipboard.writeText(inviteUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
   }
 
   if (error && members.length === 0) {
@@ -90,26 +141,88 @@ export default function CirclePage() {
           The circle
         </h1>
         <p className={ui.lede}>
-          Named friends show up on the sign-in picker. Their password is their
-          display name, spelled the same way. Guests type a name with no
-          password.
+          Friends sign in with their own password. Guests need the invite code.
+          Never share passwords in the open.
         </p>
+        {canManage && inviteUrl ? (
+          <div className={ui.ctaRow}>
+            <button
+              type="button"
+              className={`${ui.btn} ${ui.btnLamp}`}
+              onClick={copyInvite}
+            >
+              {copied ? "Copied" : "Copy guest invite link"}
+            </button>
+            <span className={ui.chip}>Code {inviteCode}</span>
+          </div>
+        ) : null}
       </section>
 
+      {canManage ? (
+        <section className={ui.section}>
+          <h2 className={ui.sectionTitle}>Add a friend</h2>
+          <form
+            onSubmit={addFriend}
+            style={{ display: "grid", gap: "0.75rem", marginTop: "0.75rem" }}
+          >
+            <input
+              className={ui.input}
+              value={newFriend}
+              onChange={(e) => setNewFriend(e.target.value)}
+              placeholder="Friend’s display name"
+              required
+              minLength={2}
+              maxLength={120}
+            />
+            <input
+              className={ui.input}
+              type="password"
+              value={friendPassword}
+              onChange={(e) => setFriendPassword(e.target.value)}
+              placeholder="Initial password (min 6)"
+              required
+              minLength={6}
+              maxLength={200}
+              autoComplete="new-password"
+            />
+            <button
+              type="submit"
+              className={`${ui.btn} ${ui.btnLamp}`}
+              disabled={busy}
+              style={{ justifySelf: "start" }}
+            >
+              {busy ? "Adding…" : "Add friend"}
+            </button>
+          </form>
+        </section>
+      ) : null}
+
       <section className={ui.section}>
-        <h2 className={ui.sectionTitle}>Add a friend</h2>
+        <h2 className={ui.sectionTitle}>Change my password</h2>
         <form
-          onSubmit={addFriend}
+          onSubmit={changePassword}
           style={{ display: "grid", gap: "0.75rem", marginTop: "0.75rem" }}
         >
           <input
             className={ui.input}
-            value={newFriend}
-            onChange={(e) => setNewFriend(e.target.value)}
-            placeholder="Friend’s display name"
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            placeholder="Current password"
             required
-            minLength={2}
-            maxLength={120}
+            maxLength={200}
+            autoComplete="current-password"
+          />
+          <input
+            className={ui.input}
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="New password (min 6)"
+            required
+            minLength={6}
+            maxLength={200}
+            autoComplete="new-password"
           />
           <button
             type="submit"
@@ -117,11 +230,11 @@ export default function CirclePage() {
             disabled={busy}
             style={{ justifySelf: "start" }}
           >
-            {busy ? "Adding…" : "Add to picker"}
+            Update password
           </button>
-          {message ? <p className={ui.meta}>{message}</p> : null}
-          {error ? <p className={ui.error}>{error}</p> : null}
         </form>
+        {message ? <p className={ui.meta} style={{ marginTop: "0.75rem" }}>{message}</p> : null}
+        {error ? <p className={ui.error} style={{ marginTop: "0.75rem" }}>{error}</p> : null}
       </section>
 
       <section className={ui.section}>
@@ -141,7 +254,7 @@ export default function CirclePage() {
       <section className={ui.section}>
         <h2 className={ui.sectionTitle}>Named friends</h2>
         {friends.length === 0 ? (
-          <p className={ui.empty}>No named friends yet — add one above.</p>
+          <p className={ui.empty}>No named friends yet.</p>
         ) : (
           <div className={ui.list}>
             {friends.map((m) => (
@@ -167,7 +280,7 @@ export default function CirclePage() {
 
       {guests.length > 0 ? (
         <section className={ui.section}>
-          <h2 className={ui.sectionTitle}>Recent guests</h2>
+          <h2 className={ui.sectionTitle}>Guests</h2>
           <div className={ui.list}>
             {guests.map((m) => (
               <div key={m.user_id} className={ui.planRow}>

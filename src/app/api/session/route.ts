@@ -10,6 +10,7 @@ import {
   signInAsGuest,
 } from "@/lib/group";
 import { MAX_TITLE, clip, readJsonBounded } from "@/lib/http";
+import { clientKey, rateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -37,13 +38,20 @@ export async function GET(request: Request) {
 type SessionBody = {
   action?: string;
   mode?: "friend" | "guest" | "founder";
-  friendId?: string;
   name?: string;
   password?: string;
+  inviteCode?: string;
 };
 
-/** Picker sign-in: friend (+ password=name), guest (typed name), or founder secret. */
+/** Sign-in: friend (name+password), guest (invite+name), or founder secret. */
 export async function POST(request: Request) {
+  if (!rateLimit(clientKey(request, "session"), 20, 60_000)) {
+    return Response.json(
+      { error: "rate_limited" },
+      { status: 429, headers: noStore },
+    );
+  }
+
   const body = await readJsonBounded<SessionBody>(request);
   if (body instanceof Response) return body;
 
@@ -61,27 +69,21 @@ export async function POST(request: Request) {
 
   const mode = body.mode;
   const password = clip(body.password, 200);
+  const name = clip(body.name, MAX_TITLE);
 
   if (mode === "friend") {
-    const friendId = clip(body.friendId, 80);
-    if (!friendId) {
-      return Response.json(
-        { error: "friend_required" },
-        { status: 400, headers: noStore },
-      );
-    }
-    const result = await signInAsFriend(friendId, password);
+    const result = await signInAsFriend(name, password);
     if (!result.ok) {
       return Response.json(
         { error: result.error },
         { status: 403, headers: noStore },
       );
     }
-    const member = await isCircleMember(friendId);
+    const member = await isCircleMember(result.userId);
     return Response.json(
       {
         viewer: {
-          sub: friendId,
+          sub: result.userId,
           name: result.name,
           email: "",
           simulated: false,
@@ -92,19 +94,19 @@ export async function POST(request: Request) {
       {
         headers: {
           ...noStore,
-          "set-cookie": guestCookieHeader(friendId),
+          "set-cookie": guestCookieHeader(result.userId),
         },
       },
     );
   }
 
   if (mode === "guest") {
-    const name = clip(body.name, MAX_TITLE);
-    const result = await signInAsGuest(name);
+    const result = await signInAsGuest(name, clip(body.inviteCode, 80));
     if (!result.ok) {
+      const status = result.error === "name_required" ? 400 : 403;
       return Response.json(
         { error: result.error },
-        { status: 400, headers: noStore },
+        { status, headers: noStore },
       );
     }
     return Response.json(
@@ -129,7 +131,6 @@ export async function POST(request: Request) {
   }
 
   if (mode === "founder") {
-    const name = clip(body.name, MAX_TITLE);
     const result = await signInAsFounder(password, name || undefined);
     if (!result.ok) {
       return Response.json(

@@ -14,21 +14,18 @@ type Me = {
   member?: boolean;
 };
 
-type PickerFriend = { id: string; name: string };
-
-const GUEST = "__guest__";
-const FOUNDER = "__founder__";
+type Mode = "friend" | "guest" | "founder";
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [me, setMe] = useState<Me | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [friends, setFriends] = useState<PickerFriend[]>([]);
   const [empty, setEmpty] = useState(false);
   const [founderAvailable, setFounderAvailable] = useState(true);
-  const [who, setWho] = useState("");
+  const [mode, setMode] = useState<Mode>("friend");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -39,34 +36,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
     return data.viewer as Me | null;
   }
 
-  async function loadRoster() {
-    const data = await fetch("/api/signin").then((r) => r.json());
-    setFriends(data.friends || []);
-    setEmpty(Boolean(data.empty));
-    setFounderAvailable(data.founderAvailable !== false);
-    if (!who) {
-      if ((data.friends || []).length) setWho(data.friends[0].id);
-      else if (data.empty) setWho(FOUNDER);
-      else setWho(GUEST);
-    }
-  }
-
   useEffect(() => {
     let alive = true;
     Promise.all([
       fetch("/api/me").then((r) => r.json()),
       fetch("/api/signin").then((r) => r.json()),
     ])
-      .then(([meData, roster]) => {
+      .then(([meData, status]) => {
         if (!alive) return;
         setMe(meData.viewer);
-        setFriends(roster.friends || []);
-        setEmpty(Boolean(roster.empty));
-        setFounderAvailable(roster.founderAvailable !== false);
-        const list: PickerFriend[] = roster.friends || [];
-        if (list.length) setWho(list[0].id);
-        else if (roster.empty) setWho(FOUNDER);
-        else setWho(GUEST);
+        setEmpty(Boolean(status.empty));
+        setFounderAvailable(status.founderAvailable !== false);
+        setMode(status.empty ? "founder" : "friend");
         setLoaded(true);
       })
       .catch(() => {
@@ -81,13 +62,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   function errorMessage(code: string | undefined): string {
-    if (code === "bad_password") return "Password didn’t match — try again.";
-    if (code === "unknown_friend") return "That friend isn’t on the list.";
+    if (code === "bad_credentials" || code === "bad_password") {
+      return "Name or password didn’t match.";
+    }
+    if (code === "invalid_invite") {
+      return "Need a valid guest invite code from someone in the circle.";
+    }
     if (code === "name_required") return "Enter a name (at least 2 characters).";
     if (code === "setup_unavailable") {
       return "Founder setup isn’t ready yet — add the founder secret first.";
     }
-    if (code === "friend_required") return "Pick who you are.";
+    if (code === "rate_limited") return "Too many tries — wait a minute.";
     return "Couldn’t sign in";
   }
 
@@ -96,13 +81,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
     setBusy(true);
     setError("");
 
-    let body: Record<string, string>;
-    if (who === FOUNDER) {
-      body = { mode: "founder", password, name };
-    } else if (who === GUEST) {
-      body = { mode: "guest", name };
+    const body: Record<string, string> = { mode };
+    if (mode === "friend") {
+      body.name = name;
+      body.password = password;
+    } else if (mode === "guest") {
+      body.name = name;
+      body.inviteCode = inviteCode;
     } else {
-      body = { mode: "friend", friendId: who, password };
+      body.password = password;
+      body.name = name;
     }
 
     const res = await fetch("/api/session", {
@@ -117,9 +105,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
       return;
     }
     setPassword("");
-    setName("");
+    setInviteCode("");
     await refresh();
-    await loadRoster();
   }
 
   async function signOut() {
@@ -129,7 +116,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
       body: JSON.stringify({ action: "sign_out" }),
     });
     await refresh();
-    await loadRoster();
   }
 
   const active = (href: string) =>
@@ -138,8 +124,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
       : pathname === href || pathname.startsWith(`${href}/`);
 
   const member = Boolean(me?.member);
-  const showGuestName = who === GUEST || who === FOUNDER;
-  const showPassword = who !== GUEST;
 
   return (
     <div className={styles.shell}>
@@ -164,26 +148,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <Link href="/plans/new" data-active={active("/plans/new")}>
               Add plan
             </Link>
-            <span
-              className={styles.who}
-              title={
-                me?.via === "guest"
-                  ? "Signed in as guest"
-                  : me?.via === "friend"
-                    ? "Signed in as friend"
-                    : me?.simulated
-                      ? "Simulated local viewer"
-                      : me?.email
-              }
-            >
+            <span className={styles.who}>
               {me?.name}
-              {me?.via === "guest"
-                ? " · guest"
-                : me?.via === "friend"
-                  ? ""
-                  : me?.simulated
-                    ? " · local"
-                    : ""}
+              {me?.via === "guest" ? " · guest" : ""}
             </span>
           </nav>
         ) : null}
@@ -195,60 +162,61 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <div>
               <strong>Who’s peeping?</strong>
               <p>
-                Pick your name and enter your password
-                {empty
-                  ? " — or sign in as founder to start the circle."
-                  : ". Guests can type a name with no password."}
+                Friends sign in with their name and password. Guests need an
+                invite code. Founder uses the setup secret.
               </p>
             </div>
             <label className={styles.gateLabel}>
-              I am
+              Sign in as
               <select
                 className={styles.gateInput}
-                value={who}
-                onChange={(e) => setWho(e.target.value)}
-                required
+                value={mode}
+                onChange={(e) => setMode(e.target.value as Mode)}
               >
-                {friends.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
-                  </option>
-                ))}
-                <option value={GUEST}>Guest</option>
+                {!empty ? <option value="friend">Friend</option> : null}
+                {!empty ? <option value="guest">Guest (invite)</option> : null}
                 {founderAvailable ? (
-                  <option value={FOUNDER}>Founder</option>
+                  <option value="founder">Founder</option>
                 ) : null}
               </select>
             </label>
-            {showGuestName ? (
+            <input
+              className={styles.gateInput}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={
+                mode === "founder" ? "Display name (optional)" : "Your name"
+              }
+              required={mode !== "founder"}
+              minLength={mode === "founder" ? undefined : 2}
+              maxLength={120}
+              autoComplete="username"
+            />
+            {mode === "guest" ? (
               <input
                 className={styles.gateInput}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder={
-                  who === FOUNDER ? "Your display name (optional)" : "Your name"
-                }
-                required={who === GUEST}
-                minLength={who === GUEST ? 2 : undefined}
-                maxLength={120}
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
+                placeholder="Guest invite code"
+                required
+                maxLength={80}
+                autoComplete="off"
               />
-            ) : null}
-            {showPassword ? (
+            ) : (
               <input
                 className={styles.gateInput}
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={
-                  who === FOUNDER
-                    ? "Founder password"
-                    : "Password (your name, same spelling)"
+                  mode === "founder" ? "Founder password" : "Password"
                 }
                 required
+                minLength={mode === "friend" ? 4 : undefined}
                 maxLength={200}
                 autoComplete="current-password"
               />
-            ) : null}
+            )}
             {error ? <p className={styles.gateError}>{error}</p> : null}
             <button type="submit" className={styles.gateBtn} disabled={busy}>
               {busy ? "Signing in…" : "Enter"}
