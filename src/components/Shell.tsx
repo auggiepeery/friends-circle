@@ -171,6 +171,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
       : pathname === href || pathname.startsWith(`${href}/`);
 
   const member = Boolean(me?.member);
+  /** Circle + hang invite deep links must render without a session. */
+  const publicInvitePath =
+    pathname.startsWith("/join/") || pathname.startsWith("/hang/");
+  const showApp = member || publicInvitePath;
+  const showGate = loaded && !member && !publicInvitePath;
 
   return (
     <div className={styles.shell}>
@@ -206,7 +211,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         ) : null}
       </header>
 
-      {loaded && !member ? (
+      {showGate ? (
         <div className={styles.gate}>
           <form className={styles.gateForm} onSubmit={signIn}>
             <div>
@@ -276,7 +281,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       ) : null}
 
       <main className={styles.main}>
-        {member ? (
+        {showApp ? (
           <div key={pathname} className={`${styles.pane} ${styles.paneEnter}`}>
             {children}
           </div>
