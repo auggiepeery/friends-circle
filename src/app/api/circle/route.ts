@@ -1,5 +1,5 @@
 import { noStore, requireViewer } from "@/lib/auth";
-import { requireSameOrigin } from "@/lib/csrf";
+import { publicRequestOrigin, requireSameOrigin } from "@/lib/csrf";
 import { guestCookieHeader } from "@/lib/guest";
 import {
   addNamedFriend,
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
   const members = await listCircleMembers();
   const named = await requireNamedMember(viewer.sub);
   const inviteCode = named === true ? await getInviteCode() : "";
-  const origin = new URL(request.url).origin;
+  const origin = publicRequestOrigin(request);
   return Response.json(
     {
       circle: { id: "circle_default", name: "Fun Peepers" },
@@ -91,7 +91,7 @@ export async function POST(request: Request) {
     const named = await requireNamedMember(viewer.sub);
     if (named !== true) return named;
     const inviteCode = await rotateInviteCode();
-    const origin = new URL(request.url).origin;
+    const origin = publicRequestOrigin(request);
     return Response.json(
       {
         ok: true,

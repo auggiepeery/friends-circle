@@ -74,10 +74,19 @@ export function CalendarBoard() {
     const map = new Map<string, CalPlan[]>();
     for (const p of plans) {
       if (!p.starts_at) continue;
-      const key = dayKey(new Date(p.starts_at));
-      const list = map.get(key) || [];
-      list.push(p);
-      map.set(key, list);
+      const start = new Date(p.starts_at);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(p.ends_at || p.starts_at);
+      end.setHours(0, 0, 0, 0);
+      // Paint multi-day spans across each calendar cell (cap runaway ranges).
+      let cursor = start;
+      for (let i = 0; i < 62 && cursor.getTime() <= end.getTime(); i += 1) {
+        const key = dayKey(cursor);
+        const list = map.get(key) || [];
+        if (!list.some((x) => planKey(x) === planKey(p))) list.push(p);
+        map.set(key, list);
+        cursor = addDays(cursor, 1);
+      }
     }
     return map;
   }, [plans]);
