@@ -1,6 +1,6 @@
 import { planForViewer } from "@/lib/access";
 import { noStore, requireViewer } from "@/lib/auth";
-import { listCircleMembers } from "@/lib/group";
+import { listCircleMembers, requireCircleMember } from "@/lib/group";
 import {
   MAX_PLACE,
   MAX_POLL_OPTIONS,
@@ -18,6 +18,8 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const viewer = await requireViewer(request);
   if (viewer instanceof Response) return viewer;
+  const gate = await requireCircleMember(viewer.sub);
+  if (gate !== true) return gate;
   const plans = await listUpcomingForUser(viewer.sub);
   return Response.json({ plans }, { headers: noStore });
 }
@@ -25,6 +27,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const viewer = await requireViewer(request);
   if (viewer instanceof Response) return viewer;
+  const gate = await requireCircleMember(viewer.sub);
+  if (gate !== true) return gate;
   const body = await readJsonBounded<{
     title?: string;
     description?: string;

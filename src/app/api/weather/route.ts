@@ -1,4 +1,5 @@
 import { noStore, requireViewer } from "@/lib/auth";
+import { requireCircleMember } from "@/lib/group";
 
 export const dynamic = "force-dynamic";
 
@@ -6,6 +7,8 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const viewer = await requireViewer(request);
   if (viewer instanceof Response) return viewer;
+  const gate = await requireCircleMember(viewer.sub);
+  if (gate !== true) return gate;
 
   const url = new URL(request.url);
   const latRaw = Number(url.searchParams.get("lat") || "40.76");
