@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { FOUNDER_ID, newFriendId, newGuestId } from "./guest";
 import { sql } from "./db";
 import { shareToken } from "./ids";
+import { hashPassword, verifyPassword } from "./passwords";
 
 export const DEFAULT_CIRCLE_ID = "circle_default";
 
@@ -11,11 +12,6 @@ export type CircleMember = {
   availability_hint: string;
   joined_at: string;
   role?: string;
-};
-
-export type PickerFriend = {
-  id: string;
-  name: string;
 };
 
 export function secretsEqual(a: string, b: string): boolean {
@@ -83,6 +79,20 @@ export async function isCircleMember(userId: string): Promise<boolean> {
   return Boolean(rows[0]);
 }
 
+export async function memberRole(
+  userId: string,
+): Promise<"founder" | "friend" | "guest" | null> {
+  const rows = await sql<{ role: string }>(
+    `select role from circle_members
+     where circle_id = $1 and user_id = $2
+     limit 1`,
+    [DEFAULT_CIRCLE_ID, userId],
+  );
+  const role = rows[0]?.role;
+  if (role === "founder" || role === "friend" || role === "guest") return role;
+  return null;
+}
+
 async function ensureMembership(
   userId: string,
   role: "founder" | "friend" | "guest",
@@ -96,63 +106,62 @@ async function ensureMembership(
   );
 }
 
-/** Named friends for the sign-in picker (not ephemeral guests). */
-export async function listPickerFriends(): Promise<PickerFriend[]> {
-  await ensureDefaultCircle();
-  const rows = await sql<{ user_id: string; display_name: string }>(
-    `select m.user_id, p.display_name
-     from circle_members m
-     join profiles p on p.id = m.user_id
-     where m.circle_id = $1
-       and m.role in ('friend', 'founder')
-       and p.display_name <> ''
-     order by p.display_name asc
-     limit 40`,
-    [DEFAULT_CIRCLE_ID],
-  );
-  return rows.map((r) => ({ id: r.user_id, name: r.display_name }));
-}
-
+/**
+ * Friend sign-in by display name + real password (hashed).
+ * Does not reveal whether the name exists vs bad password.
+ */
 export async function signInAsFriend(
-  friendId: string,
+  displayName: string,
   password: string,
-): Promise<{ ok: true; name: string } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; userId: string; name: string }
+  | { ok: false; error: string }
+> {
   await ensureDefaultCircle();
+  const name = displayName.trim();
+  if (name.length < 2 || password.length < 4) {
+    return { ok: false, error: "bad_credentials" };
+  }
+
   const rows = await sql<{
     user_id: string;
     display_name: string;
+    password_hash: string;
     role: string;
   }>(
-    `select m.user_id, p.display_name, m.role
+    `select m.user_id, p.display_name, p.password_hash, m.role
      from circle_members m
      join profiles p on p.id = m.user_id
-     where m.circle_id = $1 and m.user_id = $2
+     where m.circle_id = $1
+       and m.role = 'friend'
+       and p.display_name = $2
      limit 1`,
-    [DEFAULT_CIRCLE_ID, friendId],
+    [DEFAULT_CIRCLE_ID, name],
   );
   const row = rows[0];
-  if (!row || (row.role !== "friend" && row.role !== "founder")) {
-    return { ok: false, error: "unknown_friend" };
+  if (!row?.password_hash) {
+    return { ok: false, error: "bad_credentials" };
   }
-  const name = row.display_name;
-  // Friend password = display name exactly as stored (case-sensitive).
-  // Founder account uses FOUNDER_SETUP_SECRET instead.
-  if (row.user_id === FOUNDER_ID || row.role === "founder") {
-    const setup = founderSetupSecret();
-    if (!setup || !secretsEqual(password, setup)) {
-      return { ok: false, error: "bad_password" };
-    }
-  } else if (!name || !secretsEqual(password, name)) {
-    return { ok: false, error: "bad_password" };
-  }
-  return { ok: true, name };
+  const ok = await verifyPassword(password, row.password_hash);
+  if (!ok) return { ok: false, error: "bad_credentials" };
+  return { ok: true, userId: row.user_id, name: row.display_name };
 }
 
+/** Guest join requires a valid invite code — no open public guest access. */
 export async function signInAsGuest(
   name: string,
+  inviteCode: string,
 ): Promise<{ ok: true; userId: string; name: string } | { ok: false; error: string }> {
   const display = name.trim();
   if (display.length < 2) return { ok: false, error: "name_required" };
+
+  await ensureDefaultCircle();
+  const expected = await getInviteCode();
+  const provided = inviteCode.trim();
+  if (!expected || !provided || !secretsEqual(provided, expected)) {
+    return { ok: false, error: "invalid_invite" };
+  }
+
   const userId = newGuestId();
   await sql(
     `insert into profiles (id, email, display_name)
@@ -188,8 +197,8 @@ export async function signInAsFounder(
     "Founder";
 
   await sql(
-    `insert into profiles (id, email, display_name)
-     values ($1, '', $2)
+    `insert into profiles (id, email, display_name, password_hash)
+     values ($1, '', $2, '')
      on conflict (id) do update set
        display_name = case
          when excluded.display_name <> '' then excluded.display_name
@@ -201,15 +210,17 @@ export async function signInAsFounder(
   return { ok: true, userId: FOUNDER_ID, name, founded: count === 0 };
 }
 
-/** Add a named friend to the picker (password will be their display name). */
+/** Add a named friend with an initial password (hashed). Only founder/friend. */
 export async function addNamedFriend(
   displayName: string,
+  initialPassword: string,
 ): Promise<
   | { ok: true; id: string; name: string }
   | { ok: false; error: string }
 > {
   const name = displayName.trim();
   if (name.length < 2) return { ok: false, error: "name_required" };
+  if (initialPassword.length < 6) return { ok: false, error: "password_short" };
 
   const dup = await sql<{ user_id: string }>(
     `select m.user_id
@@ -224,13 +235,39 @@ export async function addNamedFriend(
   if (dup[0]) return { ok: false, error: "name_taken" };
 
   const userId = newFriendId();
+  const passwordHash = await hashPassword(initialPassword);
   await sql(
-    `insert into profiles (id, email, display_name)
-     values ($1, '', $2)`,
-    [userId, name],
+    `insert into profiles (id, email, display_name, password_hash)
+     values ($1, '', $2, $3)`,
+    [userId, name, passwordHash],
   );
   await ensureMembership(userId, "friend");
   return { ok: true, id: userId, name };
+}
+
+export async function changeOwnPassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (newPassword.length < 6) return { ok: false, error: "password_short" };
+  const role = await memberRole(userId);
+  if (role !== "friend") return { ok: false, error: "forbidden" };
+
+  const rows = await sql<{ password_hash: string }>(
+    `select password_hash from profiles where id = $1`,
+    [userId],
+  );
+  const hash = rows[0]?.password_hash || "";
+  if (!hash || !(await verifyPassword(currentPassword, hash))) {
+    return { ok: false, error: "bad_password" };
+  }
+  const next = await hashPassword(newPassword);
+  await sql(`update profiles set password_hash = $2 where id = $1`, [
+    userId,
+    next,
+  ]);
+  return { ok: true };
 }
 
 export async function listCircleMembers(): Promise<CircleMember[]> {
@@ -267,6 +304,21 @@ export async function requireCircleMember(
   if (await isCircleMember(userId)) return true;
   return Response.json(
     { error: "sign_in_required" },
+    {
+      status: 403,
+      headers: { "cache-control": "private, no-store" },
+    },
+  );
+}
+
+/** Guests can view calendar but cannot add friends or manage circle. */
+export async function requireNamedMember(
+  userId: string,
+): Promise<true | Response> {
+  const role = await memberRole(userId);
+  if (role === "founder" || role === "friend") return true;
+  return Response.json(
+    { error: "friends_only" },
     {
       status: 403,
       headers: { "cache-control": "private, no-store" },

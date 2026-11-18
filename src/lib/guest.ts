@@ -5,13 +5,15 @@ const COOKIE = "fp_guest";
 const MAX_AGE = 60 * 60 * 24 * 180; // 180 days
 
 function secret(): string {
-  // Stable per deploy when DATABASE_URL is set; otherwise a fixed local fallthrough.
-  // Not a third-party credential — only binds session cookies to this app instance.
-  return (
-    process.env.DATABASE_URL?.trim() ||
-    process.env.CURSOR_APP_ID?.trim() ||
-    "fun-peepers-local-guest"
-  );
+  // Prefer an explicit cookie secret; never fall back to DATABASE_URL.
+  const fromEnv =
+    process.env.SESSION_COOKIE_SECRET?.trim() ||
+    process.env.FOUNDER_SETUP_SECRET?.trim();
+  if (fromEnv) return fromEnv;
+  if (process.env.NODE_ENV === "production") {
+    return "fun-peepers-prod-cookie-fallback";
+  }
+  return "fun-peepers-local-guest";
 }
 
 function sign(sessionId: string): string {
