@@ -243,6 +243,7 @@ export async function updatePlan(
     lon: number | null;
     recurringRule: string;
     status: string;
+    audience: PlanAudience;
   }>,
 ): Promise<Plan | null> {
   const rows = await sql<Plan>(
@@ -257,6 +258,7 @@ export async function updatePlan(
        lon = case when $9::text = '__omit' then lon else $9::float8 end,
        recurring_rule = coalesce($10, recurring_rule),
        status = coalesce($11, status),
+       audience = coalesce($12, audience),
        updated_at = now()
      where id = $1
      returning *`,
@@ -272,6 +274,7 @@ export async function updatePlan(
       patch.lon === undefined ? "__omit" : patch.lon,
       patch.recurringRule ?? null,
       patch.status ?? null,
+      patch.audience ?? null,
     ],
   );
   return rows[0] ?? null;

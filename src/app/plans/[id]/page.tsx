@@ -50,6 +50,45 @@ type Weather = {
   source: string;
 };
 
+type HangInviteSummary = {
+  id: string;
+  url: string;
+  status: string;
+  expiresAt: string | null;
+  createdAt: string;
+  revokedAt: string | null;
+};
+
+function formatInviteExpiry(iso: string | null): string {
+  if (!iso) return "Set a start/end time first";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function inviteStatusLabel(status: string): string {
+  switch (status) {
+    case "active":
+      return "Active";
+    case "expired":
+      return "Expired";
+    case "revoked":
+      return "Revoked";
+    case "unscheduled":
+      return "Needs a time";
+    case "wrong_audience":
+      return "Guest audience required";
+    default:
+      return status;
+  }
+}
+
 export default function PlanDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -73,6 +112,24 @@ export default function PlanDetailPage() {
   const [endsAt, setEndsAt] = useState("");
   const [weather, setWeather] = useState<Weather | null>(null);
   const [error, setError] = useState("");
+  const [hangInvites, setHangInvites] = useState<HangInviteSummary[]>([]);
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState("");
+
+  const loadHangInvites = useCallback(async (canManage: boolean) => {
+    if (!canManage) {
+      setHangInvites([]);
+      return;
+    }
+    const res = await fetch(`/api/plans/${id}/guest-invites`);
+    if (!res.ok) {
+      setHangInvites([]);
+      return;
+    }
+    const payload = await res.json();
+    setHangInvites(Array.isArray(payload.invites) ? payload.invites : []);
+  }, [id]);
 
   const load = useCallback(async () => {
     const [detailRes, meRes] = await Promise.all([
@@ -85,13 +142,16 @@ export default function PlanDetailPage() {
     }
     const detail = (await detailRes.json()) as Detail;
     const meData = await meRes.json();
+    const role = meData.viewer?.role || null;
     setData(detail);
     setMeSub(meData.viewer?.sub || "");
-    setMeRole(meData.viewer?.role || null);
+    setMeRole(role);
     setTitle(detail.plan.title);
     setPlace(detail.plan.place);
     setStartsAt(toLocalInputValue(detail.plan.starts_at));
     setEndsAt(toLocalInputValue(detail.plan.ends_at));
+    const canManageInvites = role === "founder" || role === "friend";
+    await loadHangInvites(canManageInvites);
     if (detail.plan.outdoor) {
       const day = detail.plan.starts_at?.slice(0, 10);
       const q = new URLSearchParams({
@@ -104,7 +164,7 @@ export default function PlanDetailPage() {
     } else {
       setWeather(null);
     }
-  }, [id]);
+  }, [id, loadHangInvites]);
 
   useEffect(() => {
     load().catch(() => setError("Couldn’t load plan"));
@@ -225,12 +285,94 @@ export default function PlanDetailPage() {
     router.refresh();
   }
 
+  async function makeGuestAudience() {
+    setInviteBusy(true);
+    setInviteMessage("");
+    setError("");
+    const res = await fetch(`/api/plans/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ audience: "guest" }),
+    });
+    setInviteBusy(false);
+    if (!res.ok) {
+      setError("Couldn’t switch this plan to Guest");
+      return;
+    }
+    setInviteMessage("Audience is now Guest — create a hang invite below.");
+    await load();
+  }
+
+  async function createHangInvite() {
+    setInviteBusy(true);
+    setInviteMessage("");
+    setError("");
+    const res = await fetch(`/api/plans/${id}/guest-invites`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "create" }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    setInviteBusy(false);
+    if (!res.ok) {
+      setError(
+        payload.error === "guest_audience_required"
+          ? "Switch the plan to Guest audience first."
+          : payload.error === "unscheduled"
+            ? "Add a start time before creating a hang invite."
+            : payload.error === "already_ended"
+              ? "This hang already ended — update the time to invite guests."
+              : "Couldn’t create guest invite",
+      );
+      return;
+    }
+    if (payload.invite) {
+      setHangInvites((prev) => [
+        payload.invite as HangInviteSummary,
+        ...prev.map((inv) =>
+          inv.status === "active" ? { ...inv, status: "revoked" } : inv,
+        ),
+      ]);
+      setInviteMessage("Hang invite ready — copy and share.");
+    }
+    await loadHangInvites(true);
+  }
+
+  async function revokeHangInvite(inviteId?: string) {
+    setInviteBusy(true);
+    setInviteMessage("");
+    setError("");
+    const res = await fetch(`/api/plans/${id}/guest-invites`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "revoke", inviteId }),
+    });
+    setInviteBusy(false);
+    if (!res.ok) {
+      setError("Couldn’t revoke invite");
+      return;
+    }
+    setInviteMessage("Guest hang invite revoked.");
+    await loadHangInvites(true);
+  }
+
+  function copyHangInvite(url: string) {
+    if (!url) return;
+    void navigator.clipboard.writeText(url);
+    setInviteCopied(true);
+    setTimeout(() => setInviteCopied(false), 1600);
+  }
+
   if (error && !data) return <p className={ui.error}>{error}</p>;
   if (!data) return <p className={ui.muted}>Loading plan…</p>;
 
   const mine = data.rsvps.find((r) => r.user_id === meSub)?.response;
   const isCreator = data.plan.creator_id === meSub;
   const canDelete = isCreator || meRole === "founder";
+  const canManageHangInvites = meRole === "founder" || meRole === "friend";
+  const isGuestAudience = data.plan.audience === "guest";
+  const activeHangInvite = hangInvites.find((inv) => inv.status === "active");
+  const latestHangInvite = hangInvites[0] || null;
   const totalCents = data.expenses.reduce((s, e) => s + e.amount_cents, 0);
   const splitN = Math.max(1, data.rsvps.filter((r) => r.response === "going").length);
   const each = Math.round(totalCents / splitN);
@@ -346,6 +488,102 @@ export default function PlanDetailPage() {
             Save
           </button>
         </form>
+      ) : null}
+
+      {canManageHangInvites ? (
+        <section className={ui.panel}>
+          <h2 className={ui.panelTitle}>Guest hang invite</h2>
+          <p className={ui.muted} style={{ marginBottom: "0.85rem" }}>
+            Share a link so guests can join this hang until it ends (plus a short
+            grace). Circle-wide guest codes still live in Settings.
+          </p>
+          {!isGuestAudience ? (
+            <div className={ui.ctaRow}>
+              <p className={ui.muted} style={{ margin: 0, flex: "1 1 12rem" }}>
+                Hang invites are for Guest-audience plans so guests only see guest
+                hangs.
+              </p>
+              {isCreator ? (
+                <button
+                  type="button"
+                  className={`${ui.btn} ${ui.btnLamp}`}
+                  onClick={() => void makeGuestAudience()}
+                  disabled={inviteBusy}
+                >
+                  Make Guest hang
+                </button>
+              ) : null}
+            </div>
+          ) : (
+            <>
+              <div className={ui.ctaRow}>
+                {activeHangInvite ? (
+                  <button
+                    type="button"
+                    className={`${ui.btn} ${ui.btnLamp}`}
+                    onClick={() => copyHangInvite(activeHangInvite.url)}
+                  >
+                    {inviteCopied ? "Copied" : "Copy invite link"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className={`${ui.btn} ${ui.btnLamp}`}
+                    onClick={() => void createHangInvite()}
+                    disabled={inviteBusy}
+                  >
+                    {inviteBusy ? "Working…" : "Create invite link"}
+                  </button>
+                )}
+                {activeHangInvite ? (
+                  <button
+                    type="button"
+                    className={`${ui.btn} ${ui.btnGhost}`}
+                    onClick={() => void revokeHangInvite(activeHangInvite.id)}
+                    disabled={inviteBusy}
+                  >
+                    Revoke
+                  </button>
+                ) : null}
+                {!activeHangInvite && latestHangInvite ? (
+                  <button
+                    type="button"
+                    className={`${ui.btn} ${ui.btnGhost}`}
+                    onClick={() => void createHangInvite()}
+                    disabled={inviteBusy}
+                  >
+                    New link
+                  </button>
+                ) : null}
+              </div>
+              {activeHangInvite || latestHangInvite ? (
+                <p className={ui.meta} style={{ marginTop: "0.85rem" }}>
+                  <span className={ui.chip}>
+                    {inviteStatusLabel(
+                      (activeHangInvite || latestHangInvite)!.status,
+                    )}
+                  </span>
+                  <span>
+                    Expires{" "}
+                    {formatInviteExpiry(
+                      (activeHangInvite || latestHangInvite)!.expiresAt,
+                    )}
+                  </span>
+                </p>
+              ) : (
+                <p className={ui.muted} style={{ marginTop: "0.85rem" }}>
+                  No hang invite yet. Guests join via the link until shortly after
+                  this plan ends.
+                </p>
+              )}
+            </>
+          )}
+          {inviteMessage ? (
+            <p className={ui.meta} style={{ marginTop: "0.75rem" }}>
+              {inviteMessage}
+            </p>
+          ) : null}
+        </section>
       ) : null}
 
       {weather ? (

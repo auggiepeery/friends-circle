@@ -366,7 +366,9 @@ export default function SettingsPage() {
         <section className={ui.section}>
           <h2 className={ui.sectionTitle}>Guest invite</h2>
           <p className={ui.muted} style={{ marginBottom: "0.85rem" }}>
-            Share the invite with guests. Rotate anytime to invalidate old links.
+            Circle-wide guest code — rotate anytime to invalidate old links. For a
+            single hang that expires after the plan ends, create a hang invite on
+            that plan’s page.
           </p>
           <div className={ui.ctaRow}>
             <button
