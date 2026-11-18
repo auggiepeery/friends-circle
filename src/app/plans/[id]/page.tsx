@@ -2,7 +2,12 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { formatMoney, formatWhen, fromLocalInputValue, toLocalInputValue } from "@/lib/format";
+import {
+  formatMoney,
+  formatWhenRange,
+  fromLocalInputValue,
+  toLocalInputValue,
+} from "@/lib/format";
 import ui from "@/components/ui.module.css";
 
 type Detail = {
@@ -12,7 +17,7 @@ type Detail = {
     description: string;
     place: string;
     starts_at: string | null;
-    reminder_at: string | null;
+    ends_at: string | null;
     outdoor: boolean;
     recurring_rule: string;
     creator_id: string;
@@ -64,6 +69,7 @@ export default function PlanDetailPage() {
   const [title, setTitle] = useState("");
   const [place, setPlace] = useState("");
   const [startsAt, setStartsAt] = useState("");
+  const [endsAt, setEndsAt] = useState("");
   const [weather, setWeather] = useState<Weather | null>(null);
   const [error, setError] = useState("");
 
@@ -84,6 +90,7 @@ export default function PlanDetailPage() {
     setTitle(detail.plan.title);
     setPlace(detail.plan.place);
     setStartsAt(toLocalInputValue(detail.plan.starts_at));
+    setEndsAt(toLocalInputValue(detail.plan.ends_at));
     if (detail.plan.outdoor) {
       const day = detail.plan.starts_at?.slice(0, 10);
       const q = new URLSearchParams({
@@ -196,6 +203,7 @@ export default function PlanDetailPage() {
         title,
         place,
         startsAt: fromLocalInputValue(startsAt),
+        endsAt: fromLocalInputValue(endsAt),
       }),
     });
     setEditing(false);
@@ -225,14 +233,20 @@ export default function PlanDetailPage() {
   const totalCents = data.expenses.reduce((s, e) => s + e.amount_cents, 0);
   const splitN = Math.max(1, data.rsvps.filter((r) => r.response === "going").length);
   const each = Math.round(totalCents / splitN);
+  const repeatLabel =
+    data.plan.recurring_rule === "weekly"
+      ? "Repeats every week"
+      : data.plan.recurring_rule === "biweekly"
+        ? "Repeats every other week"
+        : data.plan.recurring_rule === "monthly"
+          ? "Repeats every month"
+          : null;
 
   return (
     <>
       <section className={`${ui.hero} rise`}>
         <p className={ui.muted}>
-          {data.plan.recurring_rule
-            ? `Shared calendar · ${data.plan.recurring_rule}`
-            : "On the shared calendar"}
+          {repeatLabel ? `Shared calendar · ${repeatLabel}` : "On the shared calendar"}
         </p>
         <h1 className={ui.headline} style={{ fontSize: "clamp(2rem, 6vw, 3.2rem)" }}>
           {data.plan.title}
@@ -242,11 +256,8 @@ export default function PlanDetailPage() {
           <span className={ui.chip}>
             {data.plan.audience === "guest" ? "Guest" : "Fun Peeps"}
           </span>
-          <span>{formatWhen(data.plan.starts_at)}</span>
+          <span>{formatWhenRange(data.plan.starts_at, data.plan.ends_at)}</span>
           {data.plan.place ? <span>{data.plan.place}</span> : null}
-          {data.plan.reminder_at ? (
-            <span className={ui.chip}>Reminder {formatWhen(data.plan.reminder_at)}</span>
-          ) : null}
         </div>
         {isCreator || canDelete ? (
           <div className={ui.ctaRow} style={{ marginTop: "1.25rem" }}>
@@ -323,6 +334,15 @@ export default function PlanDetailPage() {
               type="datetime-local"
               value={startsAt}
               onChange={(e) => setStartsAt(e.target.value)}
+            />
+          </label>
+          <label className={ui.label}>
+            Ends
+            <input
+              className={ui.input}
+              type="datetime-local"
+              value={endsAt}
+              onChange={(e) => setEndsAt(e.target.value)}
             />
           </label>
           <button type="submit" className={`${ui.btn} ${ui.btnPrimary}`}>

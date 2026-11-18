@@ -16,6 +16,34 @@ import { templateById } from "@/lib/templates";
 
 export const dynamic = "force-dynamic";
 
+const MAX_SLOTS = 14;
+
+type SlotInput = { startsAt?: string | null; endsAt?: string | null };
+
+function normalizeSlots(
+  body: {
+    slots?: SlotInput[];
+    startsAt?: string | null;
+    endsAt?: string | null;
+  },
+): { startsAt: string | null; endsAt: string | null }[] {
+  if (Array.isArray(body.slots) && body.slots.length > 0) {
+    return body.slots.slice(0, MAX_SLOTS).map((slot) => ({
+      startsAt:
+        typeof slot.startsAt === "string" ? slot.startsAt.slice(0, 40) : null,
+      endsAt: typeof slot.endsAt === "string" ? slot.endsAt.slice(0, 40) : null,
+    }));
+  }
+  return [
+    {
+      startsAt:
+        typeof body.startsAt === "string" ? body.startsAt.slice(0, 40) : body.startsAt ?? null,
+      endsAt:
+        typeof body.endsAt === "string" ? body.endsAt.slice(0, 40) : body.endsAt ?? null,
+    },
+  ];
+}
+
 export async function GET(request: Request) {
   const viewer = await requireViewer(request);
   if (viewer instanceof Response) return viewer;
@@ -36,11 +64,11 @@ export async function POST(request: Request) {
     place?: string;
     startsAt?: string | null;
     endsAt?: string | null;
+    slots?: SlotInput[];
     template?: string;
     outdoor?: boolean;
     lat?: number | null;
     lon?: number | null;
-    reminderAt?: string | null;
     recurringRule?: string;
     pollQuestion?: string;
     pollOptions?: string[];
@@ -66,22 +94,38 @@ export async function POST(request: Request) {
     );
   }
 
-  const plan = await createPlan({
+  const slots = normalizeSlots(body);
+  const shared = {
     creatorId: viewer.sub,
     title,
     description: clip(body.description ?? tmpl?.description ?? "", MAX_TEXT),
     place: clip(body.place ?? tmpl?.place ?? "", MAX_PLACE),
-    startsAt: typeof body.startsAt === "string" ? body.startsAt.slice(0, 40) : body.startsAt,
-    endsAt: typeof body.endsAt === "string" ? body.endsAt.slice(0, 40) : body.endsAt,
     template: clip(body.template || tmpl?.id || "custom", 32),
     outdoor: Boolean(body.outdoor ?? tmpl?.outdoor ?? false),
     lat: typeof body.lat === "number" && Number.isFinite(body.lat) ? body.lat : null,
     lon: typeof body.lon === "number" && Number.isFinite(body.lon) ? body.lon : null,
-    reminderAt:
-      typeof body.reminderAt === "string" ? body.reminderAt.slice(0, 40) : body.reminderAt,
     recurringRule: clip(body.recurringRule, 32),
     audience,
-  });
+  };
+
+  const plans = [];
+  for (const slot of slots) {
+    plans.push(
+      await createPlan({
+        ...shared,
+        startsAt: slot.startsAt,
+        endsAt: slot.endsAt,
+      }),
+    );
+  }
+
+  const primary = plans[0];
+  if (!primary) {
+    return Response.json(
+      { error: "create_failed" },
+      { status: 500, headers: noStore },
+    );
+  }
 
   if (body.pollQuestion) {
     const options = Array.isArray(body.pollOptions)
@@ -91,8 +135,9 @@ export async function POST(request: Request) {
           .filter(Boolean)
       : [];
     if (options.length >= 2) {
+      // Attach the optional poll to the first occurrence only.
       await createPoll({
-        planId: plan.id,
+        planId: primary.id,
         kind: clip(body.pollKind, 16) || "time",
         question: clip(body.pollQuestion, 200),
         options,
@@ -101,22 +146,35 @@ export async function POST(request: Request) {
   }
 
   const members = await listCircleMembers();
+  const audienceLabel = audience === "guest" ? "Guest" : "Fun Peeps";
+  const notifyTitle =
+    plans.length > 1
+      ? `On the calendar: ${primary.title} (${plans.length} days)`
+      : `On the calendar: ${primary.title}`;
+  const notifyBody =
+    plans.length > 1
+      ? `${viewer.name} added ${plans.length} ${audienceLabel} plans`
+      : `${viewer.name} added a ${audienceLabel} plan`;
+
   for (const m of members.slice(0, 40)) {
     if (m.user_id === viewer.sub) continue;
     const memberIsGuest = m.role === "guest";
-    // Fun Peeps plans: skip guests. Guest plans: notify everyone who can see them.
     if (audience === "fun_peeps" && memberIsGuest) continue;
     await notify({
       userId: m.user_id,
       kind: "plan",
-      title: `On the calendar: ${plan.title}`,
-      body: `${viewer.name} added a ${audience === "guest" ? "Guest" : "Fun Peeps"} plan`,
-      href: `/plans/${plan.id}`,
+      title: notifyTitle,
+      body: notifyBody,
+      href: `/plans/${primary.id}`,
     });
   }
 
   return Response.json(
-    { plan: planForViewer(plan) },
+    {
+      plan: planForViewer(primary),
+      plans: plans.map(planForViewer),
+      count: plans.length,
+    },
     { status: 201, headers: noStore },
   );
 }

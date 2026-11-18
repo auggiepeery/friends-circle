@@ -1,12 +1,29 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PLAN_TEMPLATES } from "@/lib/templates";
-import { fromLocalInputValue } from "@/lib/format";
+import {
+  combineLocalDateAndTime,
+  formatDayChip,
+  localDateKey,
+} from "@/lib/format";
 import ui from "@/components/ui.module.css";
 
 type Audience = "fun_peeps" | "guest";
+
+const MAX_DAYS = 14;
+
+function upcomingDayKeys(count: number): string[] {
+  const keys: string[] = [];
+  const cursor = new Date();
+  cursor.setHours(12, 0, 0, 0);
+  for (let i = 0; i < count; i++) {
+    keys.push(localDateKey(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return keys;
+}
 
 export default function NewPlanPage() {
   const router = useRouter();
@@ -14,8 +31,10 @@ export default function NewPlanPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [place, setPlace] = useState("");
-  const [startsAt, setStartsAt] = useState("");
-  const [reminderAt, setReminderAt] = useState("");
+  const [selectedDays, setSelectedDays] = useState<string[]>([]);
+  const [extraDate, setExtraDate] = useState("");
+  const [startTime, setStartTime] = useState("18:00");
+  const [endTime, setEndTime] = useState("20:00");
   const [outdoor, setOutdoor] = useState(false);
   const [recurringRule, setRecurringRule] = useState("");
   const [pollQuestion, setPollQuestion] = useState("");
@@ -25,6 +44,8 @@ export default function NewPlanPage() {
   const [isGuest, setIsGuest] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const dayChoices = useMemo(() => upcomingDayKeys(14), []);
 
   useEffect(() => {
     fetch("/api/me")
@@ -47,10 +68,56 @@ export default function NewPlanPage() {
     setOutdoor(t.outdoor);
   }
 
+  function toggleDay(key: string) {
+    setSelectedDays((prev) => {
+      if (prev.includes(key)) return prev.filter((d) => d !== key);
+      if (prev.length >= MAX_DAYS) return prev;
+      return [...prev, key].sort();
+    });
+  }
+
+  function addExtraDate() {
+    if (!extraDate) return;
+    toggleDay(extraDate);
+    setExtraDate("");
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setError("");
+
+    if (selectedDays.length === 0) {
+      setSaving(false);
+      setError("Pick at least one day.");
+      return;
+    }
+    if (!startTime) {
+      setSaving(false);
+      setError("Add a start time.");
+      return;
+    }
+
+    const slots: { startsAt: string; endsAt: string | null }[] = [];
+    for (const day of selectedDays) {
+      const startsAt = combineLocalDateAndTime(day, startTime);
+      if (!startsAt) {
+        setSaving(false);
+        setError("Couldn’t read one of the days or times.");
+        return;
+      }
+      let endsAt: string | null = null;
+      if (endTime) {
+        endsAt = combineLocalDateAndTime(day, endTime);
+        if (endsAt && new Date(endsAt).getTime() <= new Date(startsAt).getTime()) {
+          setSaving(false);
+          setError("End time needs to be after start time.");
+          return;
+        }
+      }
+      slots.push({ startsAt, endsAt });
+    }
+
     const options = pollQuestion
       ? pollOptions
           .split("\n")
@@ -66,8 +133,7 @@ export default function NewPlanPage() {
         place,
         template,
         outdoor,
-        startsAt: fromLocalInputValue(startsAt),
-        reminderAt: fromLocalInputValue(reminderAt),
+        slots,
         recurringRule,
         pollQuestion: pollQuestion || undefined,
         pollOptions: options,
@@ -86,6 +152,8 @@ export default function NewPlanPage() {
     router.push(`/plans/${data.plan.id}`);
   }
 
+  const sortedSelected = [...selectedDays].sort();
+
   return (
     <>
       <section className={`${ui.hero} rise`}>
@@ -93,9 +161,8 @@ export default function NewPlanPage() {
           Add to the calendar
         </h1>
         <p className={ui.lede}>
-          Choose Guest or Fun Peeps. Guests only see Guest plans; Fun Peeps see
-          Fun Peeps plans (and Guest plans they host). Optional poll if timing
-          is still fuzzy.
+          Pick one or more days, set start and end times, and choose Guest or Fun
+          Peeps. Optional poll if timing is still fuzzy.
         </p>
       </section>
 
@@ -182,37 +249,105 @@ export default function NewPlanPage() {
             placeholder="Park / theater / someone’s kitchen"
           />
         </label>
+
+        <div className={ui.panel} style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
+          <h2 className={ui.panelTitle}>Days</h2>
+          <p className={ui.muted} style={{ marginBottom: "0.75rem" }}>
+            Tap every day this hang should show up
+            {recurringRule ? " (first dates for the repeat)" : ""}. Same start
+            and end times apply to each.
+          </p>
+          <div className={ui.dayGrid} role="group" aria-label="Pick days">
+            {dayChoices.map((key) => (
+              <button
+                key={key}
+                type="button"
+                className={ui.dayChip}
+                data-active={selectedDays.includes(key)}
+                aria-pressed={selectedDays.includes(key)}
+                onClick={() => toggleDay(key)}
+              >
+                {formatDayChip(key)}
+              </button>
+            ))}
+          </div>
+          <div className={ui.dayAddRow}>
+            <label className={ui.label} style={{ flex: 1, margin: 0 }}>
+              Another date
+              <input
+                className={ui.input}
+                type="date"
+                value={extraDate}
+                onChange={(e) => setExtraDate(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className={`${ui.btn} ${ui.btnGhost}`}
+              onClick={addExtraDate}
+              disabled={!extraDate}
+              style={{ alignSelf: "end" }}
+            >
+              Add day
+            </button>
+          </div>
+          {sortedSelected.length > 0 ? (
+            <p className={ui.meta} style={{ marginTop: "0.75rem" }}>
+              {sortedSelected.length === 1
+                ? `1 day · ${formatDayChip(sortedSelected[0])}`
+                : `${sortedSelected.length} days · ${sortedSelected
+                    .map(formatDayChip)
+                    .join(" · ")}`}
+            </p>
+          ) : (
+            <p className={ui.muted} style={{ marginTop: "0.75rem" }}>
+              No days selected yet.
+            </p>
+          )}
+        </div>
+
+        <div className={ui.timeRow}>
+          <label className={ui.label}>
+            Start time
+            <input
+              className={ui.input}
+              type="time"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              required
+            />
+          </label>
+          <label className={ui.label}>
+            End time
+            <input
+              className={ui.input}
+              type="time"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+            />
+          </label>
+        </div>
+
         <label className={ui.label}>
-          Starts
-          <input
-            className={ui.input}
-            type="datetime-local"
-            value={startsAt}
-            onChange={(e) => setStartsAt(e.target.value)}
-          />
-        </label>
-        <label className={ui.label}>
-          Reminder
-          <input
-            className={ui.input}
-            type="datetime-local"
-            value={reminderAt}
-            onChange={(e) => setReminderAt(e.target.value)}
-          />
-        </label>
-        <label className={ui.label}>
-          Recurring (simple)
+          Repeats
           <select
             className={ui.select}
             value={recurringRule}
             onChange={(e) => setRecurringRule(e.target.value)}
           >
-            <option value="">One-time</option>
-            <option value="weekly">Weekly</option>
+            <option value="">Doesn’t repeat</option>
+            <option value="weekly">Every week</option>
             <option value="biweekly">Every other week</option>
-            <option value="monthly">Monthly</option>
+            <option value="monthly">Every month</option>
           </select>
         </label>
+        {recurringRule ? (
+          <p className={ui.muted}>
+            Each selected day becomes its own calendar entry and then repeats
+            from there.
+          </p>
+        ) : null}
+
         <label className={ui.label} style={{ flexDirection: "row", alignItems: "center" }}>
           <input
             type="checkbox"
@@ -260,7 +395,11 @@ export default function NewPlanPage() {
           className={`${ui.btn} ${ui.btnPrimary}`}
           disabled={saving}
         >
-          {saving ? "Saving…" : "Add to calendar"}
+          {saving
+            ? "Saving…"
+            : selectedDays.length > 1
+              ? `Add ${selectedDays.length} days to calendar`
+              : "Add to calendar"}
         </button>
       </form>
     </>

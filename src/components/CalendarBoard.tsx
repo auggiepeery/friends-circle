@@ -14,7 +14,7 @@ import {
   startOfMonth,
   weekDays,
 } from "@/lib/calendar";
-import { formatWhen } from "@/lib/format";
+import { formatWhenRange } from "@/lib/format";
 import { isCalDefaultView, readPrefs } from "@/lib/prefs";
 import styles from "./Calendar.module.css";
 
@@ -23,6 +23,7 @@ export type CalPlan = {
   title: string;
   place: string;
   starts_at: string | null;
+  ends_at?: string | null;
   my_rsvp: string | null;
   going_count: number;
   creator_name?: string;
@@ -219,7 +220,7 @@ export function CalendarBoard() {
                             <strong>{e.title}</strong>
                             <div className={styles.weekMeta}>
                               {e.audience === "guest" ? "Guest · " : "Fun Peeps · "}
-                              {formatWhen(e.starts_at)}
+                              {formatWhenRange(e.starts_at, e.ends_at)}
                               {e.place ? ` · ${e.place}` : ""}
                             </div>
                           </Link>
@@ -252,7 +253,7 @@ export function CalendarBoard() {
                       <strong>{e.title}</strong>
                       <div className={styles.weekMeta}>
                         {e.audience === "guest" ? "Guest · " : "Fun Peeps · "}
-                        {formatWhen(e.starts_at)}
+                        {formatWhenRange(e.starts_at, e.ends_at)}
                         {e.place ? ` · ${e.place}` : ""}
                       </div>
                     </Link>
@@ -271,7 +272,9 @@ export function CalendarBoard() {
           ) : (
             plans.map((e) => (
               <Link key={e.id} href={`/plans/${e.id}`} className={styles.listRow}>
-                <div className={styles.listWhen}>{formatWhen(e.starts_at)}</div>
+                <div className={styles.listWhen}>
+                  {formatWhenRange(e.starts_at, e.ends_at)}
+                </div>
                 <div>
                   <div className={styles.listTitle}>{e.title}</div>
                   <div className={styles.listMeta}>
