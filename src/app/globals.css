@@ -1,4 +1,5 @@
-/* Fun Peepers — three appearance systems only: Night lagoon, Warm dusk, Lamp citrus. */
+/* Fun Peepers appearance systems: Night lagoon, Warm dusk, Lamp citrus,
+   Ice pier, Moss hollow, Cobalt vault. */
 
 :root,
 html[data-theme="night"] {
@@ -114,6 +115,111 @@ html[data-theme="citrus"] {
   --shadow-glow: 0 0 90px rgba(212, 174, 42, 0.2);
 }
 
+html[data-theme="ice"] {
+  /* Ice pier — cold slate harbor, glacial cyan rails */
+  --ink: #0b1218;
+  --ink-soft: #15202a;
+  --lagoon: #6ec8e0;
+  --lagoon-deep: #2f8eab;
+  --lamp: #c8d8e8;
+  --lamp-hot: #e8f2fa;
+  --mist: rgba(228, 240, 248, 0.94);
+  --mist-dim: rgba(170, 196, 214, 0.6);
+  --line: rgba(180, 210, 230, 0.16);
+  --danger: #e07a6c;
+  --ok: #7dcea8;
+  --maybe: #9ec9df;
+  --chrome: rgba(11, 18, 24, 0.82);
+  --atmosphere-a: rgba(110, 200, 224, 0.26);
+  --atmosphere-b: rgba(200, 216, 232, 0.14);
+  --atmosphere-c: rgba(30, 60, 90, 0.42);
+  --atmosphere-base: radial-gradient(115% 85% at 70% -8%, #1a3040 0%, #0b1218 52%, #060a0e 100%);
+  --orb-a: rgba(110, 200, 224, 0.48);
+  --orb-b: rgba(200, 216, 232, 0.32);
+  --surface: rgba(18, 30, 40, 0.95);
+  --surface-soft: rgba(11, 18, 24, 0.92);
+  --focus-ring: rgba(110, 200, 224, 0.58);
+  --cta-ink: #061018;
+  --brand-wash: linear-gradient(118deg, #f0f8fc 0%, #6ec8e0 48%, #c8d8e8 115%);
+  --chrome-edge: rgba(110, 200, 224, 0.26);
+  --active-fill: rgba(110, 200, 224, 0.2);
+  --today-ring: rgba(200, 216, 232, 0.7);
+  --rail: rgba(110, 200, 224, 0.58);
+  --panel-glow: inset 0 1px 0 rgba(220, 236, 248, 0.08), 0 14px 40px rgba(0, 10, 20, 0.4);
+  --haze-strength: 0.016;
+  --shadow-glow: 0 0 90px rgba(110, 200, 224, 0.2);
+}
+
+html[data-theme="moss"] {
+  /* Moss hollow — deep forest floor, lichen green */
+  --ink: #0c140e;
+  --ink-soft: #172418;
+  --lagoon: #6fbf7a;
+  --lagoon-deep: #3d8a4a;
+  --lamp: #c4b07a;
+  --lamp-hot: #e2d4a8;
+  --mist: rgba(232, 242, 230, 0.94);
+  --mist-dim: rgba(180, 205, 178, 0.6);
+  --line: rgba(170, 210, 170, 0.15);
+  --danger: #e07a6c;
+  --ok: #8fd49a;
+  --maybe: #c4b07a;
+  --chrome: rgba(12, 20, 14, 0.82);
+  --atmosphere-a: rgba(111, 191, 122, 0.26);
+  --atmosphere-b: rgba(196, 176, 122, 0.14);
+  --atmosphere-c: rgba(25, 55, 35, 0.42);
+  --atmosphere-base: radial-gradient(110% 90% at 15% 0%, #1c3020 0%, #0c140e 50%, #070c08 100%);
+  --orb-a: rgba(111, 191, 122, 0.5);
+  --orb-b: rgba(196, 176, 122, 0.34);
+  --surface: rgba(20, 34, 24, 0.95);
+  --surface-soft: rgba(12, 20, 14, 0.92);
+  --focus-ring: rgba(111, 191, 122, 0.58);
+  --cta-ink: #0a160c;
+  --brand-wash: linear-gradient(118deg, #eef8ee 0%, #6fbf7a 48%, #c4b07a 115%);
+  --chrome-edge: rgba(111, 191, 122, 0.26);
+  --active-fill: rgba(111, 191, 122, 0.2);
+  --today-ring: rgba(196, 176, 122, 0.7);
+  --rail: rgba(111, 191, 122, 0.58);
+  --panel-glow: inset 0 1px 0 rgba(210, 235, 210, 0.07), 0 14px 40px rgba(0, 12, 4, 0.38);
+  --haze-strength: 0.018;
+  --shadow-glow: 0 0 90px rgba(111, 191, 122, 0.2);
+}
+
+html[data-theme="cobalt"] {
+  /* Cobalt vault — ink navy with electric blue (not teal, not purple) */
+  --ink: #070b16;
+  --ink-soft: #11182c;
+  --lagoon: #3d7cff;
+  --lagoon-deep: #2456c4;
+  --lamp: #7eb0ff;
+  --lamp-hot: #b8d4ff;
+  --mist: rgba(228, 236, 252, 0.94);
+  --mist-dim: rgba(168, 186, 220, 0.6);
+  --line: rgba(140, 170, 230, 0.16);
+  --danger: #e07a6c;
+  --ok: #6fd4b0;
+  --maybe: #7eb0ff;
+  --chrome: rgba(7, 11, 22, 0.84);
+  --atmosphere-a: rgba(61, 124, 255, 0.28);
+  --atmosphere-b: rgba(126, 176, 255, 0.14);
+  --atmosphere-c: rgba(20, 35, 80, 0.45);
+  --atmosphere-base: radial-gradient(110% 85% at 85% -5%, #152040 0%, #070b16 50%, #04060e 100%);
+  --orb-a: rgba(61, 124, 255, 0.5);
+  --orb-b: rgba(126, 176, 255, 0.34);
+  --surface: rgba(14, 22, 42, 0.95);
+  --surface-soft: rgba(7, 11, 22, 0.92);
+  --focus-ring: rgba(61, 124, 255, 0.6);
+  --cta-ink: #f4f7ff;
+  --brand-wash: linear-gradient(118deg, #eef3ff 0%, #3d7cff 48%, #7eb0ff 115%);
+  --chrome-edge: rgba(61, 124, 255, 0.28);
+  --active-fill: rgba(61, 124, 255, 0.22);
+  --today-ring: rgba(126, 176, 255, 0.72);
+  --rail: rgba(61, 124, 255, 0.6);
+  --panel-glow: inset 0 1px 0 rgba(180, 200, 255, 0.08), 0 14px 42px rgba(0, 6, 24, 0.45);
+  --haze-strength: 0.017;
+  --shadow-glow: 0 0 90px rgba(61, 124, 255, 0.22);
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -201,7 +307,10 @@ select {
 /* Theme-flavored secondary wash */
 html[data-theme="dusk"] .atmosphere::after,
 html[data-theme="citrus"] .atmosphere::after,
-html[data-theme="night"] .atmosphere::after {
+html[data-theme="night"] .atmosphere::after,
+html[data-theme="ice"] .atmosphere::after,
+html[data-theme="moss"] .atmosphere::after,
+html[data-theme="cobalt"] .atmosphere::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -219,6 +328,18 @@ html[data-theme="dusk"] .atmosphere::after {
 
 html[data-theme="citrus"] .atmosphere::after {
   background: radial-gradient(60% 40% at 85% 12%, rgba(246, 212, 92, 0.14), transparent 70%);
+}
+
+html[data-theme="ice"] .atmosphere::after {
+  background: linear-gradient(185deg, rgba(140, 190, 220, 0.12) 0%, transparent 40%, rgba(8, 20, 32, 0.5) 100%);
+}
+
+html[data-theme="moss"] .atmosphere::after {
+  background: radial-gradient(70% 50% at 20% 80%, rgba(80, 140, 90, 0.22), transparent 65%);
+}
+
+html[data-theme="cobalt"] .atmosphere::after {
+  background: radial-gradient(55% 45% at 90% 15%, rgba(61, 124, 255, 0.18), transparent 70%);
 }
 
 .orb {
@@ -258,6 +379,25 @@ html[data-theme="citrus"] .orb--lamp {
   top: 8%;
   opacity: 0.55;
   filter: blur(48px);
+}
+
+html[data-theme="ice"] .orb--lagoon {
+  top: 10%;
+  left: 55%;
+  opacity: 0.4;
+}
+
+html[data-theme="moss"] .orb--lagoon {
+  top: 55%;
+  left: -8%;
+  opacity: 0.42;
+}
+
+html[data-theme="cobalt"] .orb--lamp {
+  right: 5%;
+  top: -6%;
+  opacity: 0.5;
+  filter: blur(52px);
 }
 
 @keyframes haze-drift {

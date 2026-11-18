@@ -1,6 +1,12 @@
 /** Shared prefs types + normalization (safe for client and server). */
 
-export type ThemeId = "night" | "dusk" | "citrus";
+export type ThemeId =
+  | "night"
+  | "dusk"
+  | "citrus"
+  | "ice"
+  | "moss"
+  | "cobalt";
 export type CalDefaultView = "month" | "week" | "list";
 
 export type ClientPrefs = {
@@ -14,6 +20,9 @@ export const THEME_OPTIONS: { id: ThemeId; label: string; blurb: string }[] = [
   { id: "night", label: "Night lagoon", blurb: "Teal glass · deep water glow" },
   { id: "dusk", label: "Warm dusk", blurb: "Ember sky · copper rails" },
   { id: "citrus", label: "Lamp citrus", blurb: "Charcoal night · amber lamp" },
+  { id: "ice", label: "Ice pier", blurb: "Slate harbor · glacial cyan" },
+  { id: "moss", label: "Moss hollow", blurb: "Forest floor · lichen green" },
+  { id: "cobalt", label: "Cobalt vault", blurb: "Ink navy · electric blue" },
 ];
 
 /** Removed appearance themes — coerce to Night lagoon. */
@@ -26,8 +35,17 @@ export const DEFAULT_PREFS: ClientPrefs = {
   reduceMotion: false,
 };
 
+const LIVE_THEMES = new Set<ThemeId>([
+  "night",
+  "dusk",
+  "citrus",
+  "ice",
+  "moss",
+  "cobalt",
+]);
+
 export function isThemeId(value: unknown): value is ThemeId {
-  return value === "night" || value === "dusk" || value === "citrus";
+  return typeof value === "string" && LIVE_THEMES.has(value as ThemeId);
 }
 
 export function coerceThemeId(value: unknown): ThemeId {

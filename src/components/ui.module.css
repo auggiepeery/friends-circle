@@ -218,6 +218,24 @@
   --swatch-ink: #10120c;
 }
 
+.themeCard[data-theme-id="ice"] {
+  --swatch-a: #6ec8e0;
+  --swatch-b: #c8d8e8;
+  --swatch-ink: #0b1218;
+}
+
+.themeCard[data-theme-id="moss"] {
+  --swatch-a: #6fbf7a;
+  --swatch-b: #c4b07a;
+  --swatch-ink: #0c140e;
+}
+
+.themeCard[data-theme-id="cobalt"] {
+  --swatch-a: #3d7cff;
+  --swatch-b: #7eb0ff;
+  --swatch-ink: #070b16;
+}
+
 .themeCard strong {
   font-family: var(--font-display);
   font-size: 1rem;

@@ -21,7 +21,7 @@ Open http://127.0.0.1:3000
 
 ## Brand & themes
 
-**Fun Peepers** — three full appearance systems (Syne + Manrope). Home is a shared month/week/list calendar with a single glass control chrome on iPhone.
+**Fun Peepers** — full appearance systems (Syne + Manrope). Home is a shared month/week/list calendar with a single glass control chrome on iPhone.
 
 Appearance themes (Settings → Appearance, saved on your signed-in profile):
 
@@ -30,6 +30,9 @@ Appearance themes (Settings → Appearance, saved on your signed-in profile):
 | Night lagoon | Default — teal glass, deep water glow |
 | Warm dusk | Ember sky, copper rails |
 | Lamp citrus | Charcoal night, amber lamp |
+| Ice pier | Slate harbor, glacial cyan |
+| Moss hollow | Forest floor, lichen green |
+| Cobalt vault | Ink navy, electric blue |
 
 Removed themes (Day mist, Deep reef, etc.) migrate to **Night lagoon**.
 
