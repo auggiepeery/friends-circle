@@ -204,12 +204,17 @@
 }
 
 .cellToday {
+  background: color-mix(in srgb, var(--lamp) 12%, var(--surface));
   box-shadow: inset 0 0 0 1px var(--today-ring);
-  background: color-mix(in srgb, var(--lamp) 8%, var(--surface));
 }
 
 .cellSelected {
   background: color-mix(in srgb, var(--lagoon) 16%, var(--surface));
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--lagoon) 55%, transparent);
+}
+
+.cellToday.cellSelected {
+  background: color-mix(in srgb, var(--lagoon) 14%, color-mix(in srgb, var(--lamp) 8%, var(--surface)));
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--lagoon) 55%, transparent);
 }
 
@@ -223,6 +228,24 @@
   font-size: 0.78rem;
   color: var(--mist-dim);
   padding: 0 0.15rem;
+}
+
+/* Clear “today” mark — lamp disc, quiet wash; not a glow/pill cluster. */
+.dayNumToday {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  margin: -0.1rem 0 0.05rem -0.1rem;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--lamp);
+  color: var(--cta-ink);
+  font-weight: 700;
+  font-size: 0.78rem;
+  line-height: 1;
+  letter-spacing: -0.02em;
 }
 
 .event {
@@ -263,6 +286,44 @@
   font-size: 1.15rem;
   letter-spacing: -0.03em;
   line-height: 1.1;
+}
+
+.agendaDayToday {
+  border-top-color: color-mix(in srgb, var(--lamp) 55%, var(--line));
+  background: color-mix(in srgb, var(--lamp) 8%, transparent);
+  border-radius: 12px;
+  margin: 0 -0.35rem;
+  padding-left: 0.35rem;
+  padding-right: 0.35rem;
+}
+
+.agendaDayToday.agendaDaySelected {
+  background: color-mix(in srgb, var(--lagoon) 10%, color-mix(in srgb, var(--lamp) 6%, transparent));
+}
+
+.agendaNumToday {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 50%;
+  background: var(--lamp);
+  color: var(--cta-ink);
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.03em;
+}
+
+.agendaTodayLabel {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.62rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--lamp-hot);
+  margin-top: 0.2rem;
 }
 
 .agendaDow {
@@ -309,6 +370,18 @@
   min-height: 12rem;
 }
 
+.weekColToday {
+  border-top-color: var(--lamp);
+  background: color-mix(in srgb, var(--lamp) 8%, transparent);
+  border-radius: 0 0 12px 12px;
+  padding-left: 0.45rem;
+  padding-right: 0.45rem;
+}
+
+.weekColToday.weekColSelected {
+  background: color-mix(in srgb, var(--lagoon) 10%, color-mix(in srgb, var(--lamp) 6%, transparent));
+}
+
 .weekDow {
   font-size: 0.75rem;
   color: var(--mist-dim);
@@ -316,11 +389,30 @@
   letter-spacing: 0.05em;
 }
 
+.weekColToday .weekDow {
+  color: var(--lamp-hot);
+}
+
 .weekDate {
   font-family: var(--font-display);
   font-size: 1.35rem;
   letter-spacing: -0.03em;
   margin: 0.15rem 0 0.65rem;
+}
+
+.weekDateToday {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  margin: 0.1rem 0 0.55rem;
+  border-radius: 50%;
+  background: var(--lamp);
+  color: var(--cta-ink);
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: -0.03em;
 }
 
 .weekEvent {
