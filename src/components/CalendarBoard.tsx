@@ -449,15 +449,17 @@ export function CalendarBoard() {
               const events = byDay.get(key) || [];
               const inMonth = day.getMonth() === anchor.getMonth();
               const selected = selectedDay === key;
+              const isToday = sameDay(day, today);
               return (
                 <div
                   key={key}
                   role="button"
                   tabIndex={0}
                   aria-pressed={selected}
-                  aria-label={`${formatDayHeading(key)}${events.length ? `, ${events.length} plans` : ""} — who's free`}
+                  aria-current={isToday ? "date" : undefined}
+                  aria-label={`${isToday ? "Today, " : ""}${formatDayHeading(key)}${events.length ? `, ${events.length} plans` : ""} — who's free`}
                   className={`${styles.cell} ${inMonth ? "" : styles.cellMuted} ${
-                    sameDay(day, today) ? styles.cellToday : ""
+                    isToday ? styles.cellToday : ""
                   } ${selected ? styles.cellSelected : ""}`}
                   onClick={() => selectDay(day)}
                   onKeyDown={(e) => {
@@ -467,7 +469,9 @@ export function CalendarBoard() {
                     }
                   }}
                 >
-                  <span className={styles.dayNum}>{day.getDate()}</span>
+                  <span className={isToday ? styles.dayNumToday : styles.dayNum}>
+                    {day.getDate()}
+                  </span>
                   {events.slice(0, 3).map((e) => (
                     <Link
                       key={planKey(e)}
@@ -526,19 +530,26 @@ export function CalendarBoard() {
                   <div
                     key={key}
                     className={`${styles.agendaDay} ${
-                      selectedDay === key ? styles.agendaDaySelected : ""
-                    }`}
+                      isToday ? styles.agendaDayToday : ""
+                    } ${selectedDay === key ? styles.agendaDaySelected : ""}`}
                   >
                     <button
                       type="button"
                       className={styles.agendaDateBtn}
                       onClick={() => selectDay(day)}
                       aria-pressed={selectedDay === key}
-                      aria-label={`Who's free on ${formatDayHeading(key)}`}
+                      aria-current={isToday ? "date" : undefined}
+                      aria-label={`${isToday ? "Today, " : ""}Who's free on ${formatDayHeading(key)}`}
                     >
                       <span className={styles.agendaDate}>
-                        {day.getDate()}
-                        <span className={styles.agendaDow}>{DOW[day.getDay()]}</span>
+                        <span className={isToday ? styles.agendaNumToday : undefined}>
+                          {day.getDate()}
+                        </span>
+                        {isToday ? (
+                          <span className={styles.agendaTodayLabel}>Today</span>
+                        ) : (
+                          <span className={styles.agendaDow}>{DOW[day.getDay()]}</span>
+                        )}
                       </span>
                     </button>
                     <div className={styles.agendaEvents}>
@@ -589,20 +600,28 @@ export function CalendarBoard() {
             const key = dayKey(day);
             const events = byDay.get(key) || [];
             const selected = selectedDay === key;
+            const isToday = sameDay(day, today);
             return (
               <div
                 key={key}
-                className={`${styles.weekCol} ${selected ? styles.weekColSelected : ""}`}
+                className={`${styles.weekCol} ${isToday ? styles.weekColToday : ""} ${
+                  selected ? styles.weekColSelected : ""
+                }`}
               >
                 <button
                   type="button"
                   className={styles.weekHeadBtn}
                   onClick={() => selectDay(day)}
                   aria-pressed={selected}
-                  aria-label={`Who's free on ${formatDayHeading(key)}`}
+                  aria-current={isToday ? "date" : undefined}
+                  aria-label={`${isToday ? "Today, " : ""}Who's free on ${formatDayHeading(key)}`}
                 >
-                  <div className={styles.weekDow}>{DOW[day.getDay()]}</div>
-                  <div className={styles.weekDate}>{day.getDate()}</div>
+                  <div className={styles.weekDow}>
+                    {isToday ? "Today" : DOW[day.getDay()]}
+                  </div>
+                  <div className={isToday ? styles.weekDateToday : styles.weekDate}>
+                    {day.getDate()}
+                  </div>
                 </button>
                 {events.length === 0 ? (
                   <button
